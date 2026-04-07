@@ -124,3 +124,14 @@ body {
 .count-up {
   animation: countUp 0.5s ease-out;
 }
+
+/* Loading progress bar */
+.loading-bar {
+  width: 30%;
+  animation: loadingSlide 1.5s ease-in-out infinite;
+}
+
+@keyframes loadingSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}

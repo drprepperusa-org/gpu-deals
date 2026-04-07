@@ -40,11 +40,55 @@ function categorize(news: NewsItem[]) {
   return { price, industry, ai };
 }
 
+// ─── Skeleton Components ─────────────────────────────────
+
+function StatSkeleton() {
+  return (
+    <div className="panel rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="shimmer h-3 w-16 rounded" />
+        <div className="shimmer h-3.5 w-3.5 rounded" />
+      </div>
+      <div className="shimmer h-7 w-10 rounded mb-1" />
+      <div className="shimmer h-2.5 w-24 rounded" />
+    </div>
+  );
+}
+
+function NewsCardSkeleton() {
+  return (
+    <div className="panel rounded-xl px-4 sm:px-5 py-3 sm:py-4">
+      <div className="shimmer h-4 w-full rounded mb-2" />
+      <div className="shimmer h-4 w-3/4 rounded mb-3" />
+      <div className="flex items-center gap-2">
+        <div className="shimmer h-2.5 w-20 rounded" />
+        <div className="shimmer h-2.5 w-12 rounded" />
+      </div>
+    </div>
+  );
+}
+
+function SidebarSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="panel-solid rounded-xl p-4">
+        <div className="shimmer h-3 w-20 rounded mb-3" />
+        <div className="shimmer h-3 w-36 rounded mb-2" />
+        <div className="shimmer h-2.5 w-28 rounded" />
+      </div>
+      <div className="panel-solid rounded-xl p-4">
+        <div className="shimmer h-3 w-24 rounded mb-3" />
+        <div className="shimmer h-3 w-32 rounded" />
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard ────────────────────────────────────────────
 
 export default function Dashboard() {
   const [news, setNews] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [lastScraped, setLastScraped] = useState('');
   const [clock, setClock] = useState('');
@@ -126,27 +170,46 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
+
+          {/* Loading progress bar */}
+          {loading && (
+            <div className="h-0.5 bg-dark-surface2 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-accent via-accent2 to-accent rounded-full loading-bar" />
+            </div>
+          )}
         </header>
 
         <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
 
           {/* ═══ STATS ROW ═══ */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6">
-            {[
-              { label: 'HEADLINES', value: news.length, sub: 'from Google News', icon: Newspaper, color: 'text-accent' },
-              { label: 'PRICE NEWS', value: price.length, sub: 'deals & drops', icon: TrendingDown, color: 'text-emerald-400' },
-              { label: 'INDUSTRY', value: industry.length, sub: 'launches & reviews', icon: Monitor, color: 'text-blue-400' },
-              { label: 'AI & DC', value: ai.length, sub: 'datacenter & AI', icon: BrainCircuit, color: 'text-amber-400' },
-            ].map((s, i) => (
-              <div key={i} className="panel rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[10px] font-bold tracking-widest text-zinc-600">{s.label}</span>
-                  <s.icon className={`w-3.5 h-3.5 ${s.color} opacity-50`} />
+            {loading && !loaded ? (
+              <>
+                <StatSkeleton />
+                <StatSkeleton />
+                <StatSkeleton />
+                <StatSkeleton />
+              </>
+            ) : (
+              [{
+                label: 'HEADLINES', value: news.length, sub: 'from Google News', icon: Newspaper, color: 'text-accent',
+              }, {
+                label: 'PRICE NEWS', value: price.length, sub: 'deals & drops', icon: TrendingDown, color: 'text-emerald-400',
+              }, {
+                label: 'INDUSTRY', value: industry.length, sub: 'launches & reviews', icon: Monitor, color: 'text-blue-400',
+              }, {
+                label: 'AI & DC', value: ai.length, sub: 'datacenter & AI', icon: BrainCircuit, color: 'text-amber-400',
+              }].map((s, i) => (
+                <div key={i} className="panel rounded-xl p-4 fade-in" style={{ animationDelay: `${i * 80}ms` }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-bold tracking-widest text-zinc-600">{s.label}</span>
+                    <s.icon className={`w-3.5 h-3.5 ${s.color} opacity-50`} />
+                  </div>
+                  <div className="text-2xl font-bold text-white tracking-tight count-up">{s.value}</div>
+                  <div className="text-[10px] text-zinc-600 mt-0.5">{s.sub}</div>
                 </div>
-                <div className="text-2xl font-bold text-white tracking-tight">{s.value}</div>
-                <div className="text-[10px] text-zinc-600 mt-0.5">{s.sub}</div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
           {/* ═══ MAIN LAYOUT ═══ */}
@@ -155,8 +218,27 @@ export default function Dashboard() {
             {/* LEFT: News */}
             <div className="space-y-4">
 
+              {/* Loading skeleton */}
+              {loading && !loaded && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="shimmer h-4 w-4 rounded" />
+                    <div className="shimmer h-4 w-32 rounded" />
+                  </div>
+                  <NewsCardSkeleton />
+                  <NewsCardSkeleton />
+                  <NewsCardSkeleton />
+                  <div className="flex items-center gap-2 mb-3 mt-6">
+                    <div className="shimmer h-4 w-4 rounded" />
+                    <div className="shimmer h-4 w-36 rounded" />
+                  </div>
+                  <NewsCardSkeleton />
+                  <NewsCardSkeleton />
+                </div>
+              )}
+
               {/* Price & Deals */}
-              {price.length > 0 && (
+              {!loading && price.length > 0 && (
                 <div className="fade-in">
                   <div className="flex items-center gap-2 mb-3">
                     <TrendingDown className="w-4 h-4 text-emerald-400" />
@@ -164,106 +246,102 @@ export default function Dashboard() {
                     <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/8 text-emerald-400 font-bold">LIVE</span>
                   </div>
                   <div className="space-y-2">
-                    {price.map((n, i) => <NewsCard key={`p-${i}`} item={n} />)}
+                    {price.map((n, i) => <NewsCard key={`p-${i}`} item={n} delay={i * 60} />)}
                   </div>
                 </div>
               )}
 
               {/* Industry */}
-              {industry.length > 0 && (
-                <div className="fade-in">
+              {!loading && industry.length > 0 && (
+                <div className="fade-in" style={{ animationDelay: '150ms' }}>
                   <div className="flex items-center gap-2 mb-3 mt-6">
                     <Monitor className="w-4 h-4 text-blue-400" />
                     <span className="text-xs font-bold text-white">Industry & Launches</span>
                   </div>
                   <div className="space-y-2">
-                    {industry.map((n, i) => <NewsCard key={`i-${i}`} item={n} />)}
+                    {industry.map((n, i) => <NewsCard key={`i-${i}`} item={n} delay={i * 60} />)}
                   </div>
                 </div>
               )}
 
               {/* AI & Datacenter */}
-              {ai.length > 0 && (
-                <div className="fade-in">
+              {!loading && ai.length > 0 && (
+                <div className="fade-in" style={{ animationDelay: '300ms' }}>
                   <div className="flex items-center gap-2 mb-3 mt-6">
                     <BrainCircuit className="w-4 h-4 text-amber-400" />
                     <span className="text-xs font-bold text-white">AI & Datacenter</span>
                   </div>
                   <div className="space-y-2">
-                    {ai.map((n, i) => <NewsCard key={`a-${i}`} item={n} />)}
+                    {ai.map((n, i) => <NewsCard key={`a-${i}`} item={n} delay={i * 60} />)}
                   </div>
                 </div>
               )}
 
               {/* Empty state */}
-              {!loading && news.length === 0 && (
-                <div className="panel rounded-xl py-20 text-center">
+              {!loading && loaded && news.length === 0 && (
+                <div className="panel rounded-xl py-20 text-center fade-in">
                   <div className="w-12 h-12 rounded-xl bg-dark-surface2 flex items-center justify-center mx-auto mb-4">
                     <Newspaper className="w-5 h-5 text-zinc-700" />
                   </div>
                   <p className="text-xs text-zinc-600">No news yet. Hit refresh to fetch latest GPU headlines.</p>
                 </div>
               )}
-
-              {/* Loading */}
-              {loading && news.length === 0 && (
-                <div className="panel rounded-xl py-20 text-center">
-                  <RefreshCw className="w-6 h-6 text-accent mx-auto mb-3 animate-spin" />
-                  <p className="text-xs text-zinc-500">Scraping Google News...</p>
-                </div>
-              )}
             </div>
 
             {/* RIGHT: Sidebar */}
-            <div className="space-y-4">
+            {loading && !loaded ? (
+              <SidebarSkeleton />
+            ) : (
+              <div className="space-y-4 fade-in" style={{ animationDelay: '200ms' }}>
 
-              {/* Discord Status */}
-              <div className="panel-solid rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Activity className="w-3.5 h-3.5 text-accent" />
-                  <span className="text-[10px] font-bold tracking-widest text-zinc-500">DISCORD</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-accent2 pulse-ring text-accent2" />
-                  <span className="text-xs text-zinc-400">Auto-posting every 12h</span>
-                </div>
-                <div className="text-[10px] text-zinc-600 mt-2">Next: 12:00 PM UTC</div>
-              </div>
-
-              {/* Last Scraped */}
-              {lastScraped && (
+                {/* Discord Status */}
                 <div className="panel-solid rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Clock className="w-3.5 h-3.5 text-zinc-600" />
-                    <span className="text-[10px] font-bold tracking-widest text-zinc-500">LAST SCRAPED</span>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Activity className="w-3.5 h-3.5 text-accent" />
+                    <span className="text-[10px] font-bold tracking-widest text-zinc-500">DISCORD</span>
                   </div>
-                  <span className="text-xs text-zinc-400">
-                    {new Date(lastScraped).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-accent2 pulse-ring text-accent2" />
+                    <span className="text-xs text-zinc-400">Auto-posting every 12h</span>
+                  </div>
+                  <div className="text-[10px] text-zinc-600 mt-2">Next: 12:00 PM UTC</div>
                 </div>
-              )}
 
-              {/* Activity Log */}
-              <div className="panel-solid rounded-xl overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-dark-border flex items-center gap-2">
-                  <Activity className="w-3 h-3 text-zinc-600" />
-                  <span className="text-[10px] font-bold tracking-widest text-zinc-600">LOG</span>
-                </div>
-                <div ref={logRef} className="px-4 py-2 font-mono text-[10px] max-h-40 overflow-y-auto scrollbar-thin space-y-0.5">
-                  {logs.map((l, i) => (
-                    <div key={i} className={
-                      l.type === 'ok' ? 'text-accent2' :
-                      l.type === 'err' ? 'text-rose-400' :
-                      l.type === 'info' ? 'text-blue-400/60' : 'text-zinc-700'
-                    }>{l.msg}</div>
-                  ))}
+                {/* Last Scraped */}
+                {lastScraped && (
+                  <div className="panel-solid rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="w-3.5 h-3.5 text-zinc-600" />
+                      <span className="text-[10px] font-bold tracking-widest text-zinc-500">LAST SCRAPED</span>
+                    </div>
+                    <span className="text-xs text-zinc-400">
+                      {new Date(lastScraped).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                    </span>
+                  </div>
+                )}
+
+                {/* Activity Log */}
+                <div className="panel-solid rounded-xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-dark-border flex items-center gap-2">
+                    <Activity className="w-3 h-3 text-zinc-600" />
+                    <span className="text-[10px] font-bold tracking-widest text-zinc-600">LOG</span>
+                  </div>
+                  <div ref={logRef} className="px-4 py-2 font-mono text-[10px] max-h-40 overflow-y-auto scrollbar-thin space-y-0.5">
+                    {logs.map((l, i) => (
+                      <div key={i} className={
+                        l.type === 'ok' ? 'text-accent2' :
+                        l.type === 'err' ? 'text-rose-400' :
+                        l.type === 'info' ? 'text-blue-400/60' : 'text-zinc-700'
+                      }>{l.msg}</div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="text-center mt-8 pb-6">
-            <span className="text-[10px] text-zinc-800 font-mono">OPENCLAW GPU NEWS v2.0</span>
+            <span className="text-[10px] text-zinc-800 font-mono">GPU DEALS v2.0</span>
           </div>
         </div>
       </div>
@@ -273,10 +351,11 @@ export default function Dashboard() {
 
 // ─── News Card Component ─────────────────────────────────
 
-function NewsCard({ item }: { item: NewsItem }) {
+function NewsCard({ item, delay = 0 }: { item: NewsItem; delay?: number }) {
   return (
     <a href={item.link} target="_blank" rel="noreferrer"
-      className="panel rounded-xl px-4 sm:px-5 py-3 sm:py-4 flex items-start justify-between hover:border-dark-border2 transition-all group">
+      className="panel rounded-xl px-4 sm:px-5 py-3 sm:py-4 flex items-start justify-between hover:border-dark-border2 transition-all group fade-in"
+      style={{ animationDelay: `${delay}ms` }}>
       <div className="flex-1 min-w-0 mr-2 sm:mr-3">
         <p className="text-xs sm:text-[13px] text-zinc-300 font-medium leading-snug group-hover:text-white transition-colors">
           {item.headline}
