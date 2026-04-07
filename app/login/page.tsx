@@ -136,7 +136,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || success}
-                className="w-full px-6 py-2.5 bg-gradient-to-r from-accent to-indigo-600 hover:from-accent/90 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all glow-btn flex items-center justify-center gap-2"
+                className="w-full cursor-pointer px-6 py-2.5 bg-gradient-to-r from-accent to-indigo-600 hover:from-accent/90 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all glow-btn flex items-center justify-center gap-2"
               >
                 {success ? (
                   <><CheckCircle className="w-4 h-4 text-accent2" /> Welcome back!</>
@@ -149,7 +149,7 @@ export default function LoginPage() {
 
               <div className="text-center pt-2">
                 <span className="text-xs text-zinc-600">No account? </span>
-                <button type="button" onClick={() => switchMode('register')} className="text-xs text-accent hover:text-accent/80 font-semibold transition-colors">
+                <button type="button" onClick={() => switchMode('register')} className="text-xs cursor-pointer text-accent hover:text-accent/80 font-semibold transition-colors">
                   Create one
                 </button>
               </div>
@@ -160,7 +160,7 @@ export default function LoginPage() {
           {mode === 'register' && (
             <form onSubmit={handleRegister} className="panel rounded-xl p-5 sm:p-6 space-y-4 fade-in">
               <div className="flex items-center gap-2 mb-2">
-                <button type="button" onClick={() => switchMode('login')} className="p-1 rounded-lg hover:bg-dark-surface2 text-zinc-500 hover:text-white transition-all">
+                <button type="button" onClick={() => switchMode('login')} className="p-1 cursor-pointer rounded-lg hover:bg-dark-surface2 text-zinc-500 hover:text-white transition-all">
                   <ArrowLeft className="w-4 h-4" />
                 </button>
                 <h2 className="text-sm font-bold text-white">Create Account</h2>
@@ -214,7 +214,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || success}
-                className="w-full px-6 py-2.5 bg-gradient-to-r from-accent2 to-teal-600 hover:from-accent2/90 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all glow-btn flex items-center justify-center gap-2"
+                className="w-full cursor-pointer px-6 py-2.5 bg-gradient-to-r from-accent2 to-teal-600 hover:from-accent2/90 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all glow-btn flex items-center justify-center gap-2"
               >
                 {success ? (
                   <><CheckCircle className="w-4 h-4 text-white" /> Account created!</>
@@ -227,7 +227,7 @@ export default function LoginPage() {
 
               <div className="text-center pt-2">
                 <span className="text-xs text-zinc-600">Already have an account? </span>
-                <button type="button" onClick={() => switchMode('login')} className="text-xs text-accent hover:text-accent/80 font-semibold transition-colors">
+                <button type="button" onClick={() => switchMode('login')} className="text-xs cursor-pointer text-accent hover:text-accent/80 font-semibold transition-colors">
                   Sign in
                 </button>
               </div>

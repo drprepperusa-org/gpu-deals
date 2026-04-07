@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Newspaper, Clock, Cpu, Activity, RefreshCw, Radio,
-  TrendingDown, Monitor, BrainCircuit, ExternalLink, LogOut, Bell, BellOff,
+  TrendingDown, Monitor, BrainCircuit, ExternalLink, Bell, BellOff,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────
@@ -203,11 +203,11 @@ export default function Dashboard() {
               <div className="h-4 w-px bg-dark-border hidden sm:block" />
               <span className="text-[11px] font-mono text-zinc-600 hidden sm:inline">{clock}</span>
               <div className="h-4 w-px bg-dark-border" />
-              <button onClick={fetchNews} disabled={loading} className="p-1.5 rounded-lg hover:bg-dark-surface2 text-zinc-500 hover:text-white transition-all">
+              <button onClick={fetchNews} disabled={loading} className="p-1.5 cursor-pointer rounded-lg hover:bg-dark-surface2 text-zinc-500 hover:text-white transition-all">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               </button>
-              <button onClick={handleLogout} className="p-1.5 rounded-lg hover:bg-dark-surface2 text-zinc-500 hover:text-rose-400 transition-all" title="Sign out">
-                <LogOut className="w-3.5 h-3.5" />
+              <button onClick={handleLogout} className="px-2.5 py-1.5 cursor-pointer rounded-lg hover:bg-dark-surface2 text-[11px] font-medium text-zinc-500 hover:text-rose-400 transition-all">
+                Logout
               </button>
             </div>
           </div>
@@ -345,7 +345,7 @@ export default function Dashboard() {
                     <button
                       onClick={handleToggleDiscord}
                       disabled={togglingDiscord}
-                      className={`relative w-9 h-5 rounded-full transition-colors ${discordEnabled ? 'bg-accent2' : 'bg-dark-border2'} ${togglingDiscord ? 'opacity-50' : ''}`}
+                      className={`relative cursor-pointer w-9 h-5 rounded-full transition-colors ${discordEnabled ? 'bg-accent2' : 'bg-dark-border2'} ${togglingDiscord ? 'opacity-50' : ''}`}
                     >
                       <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${discordEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
                     </button>
@@ -417,13 +417,13 @@ export default function Dashboard() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowDiscordModal(false)}
-                  className="flex-1 px-4 py-2 rounded-lg text-xs font-semibold text-zinc-400 border border-dark-border hover:border-dark-border2 hover:text-white transition-all"
+                  className="flex-1 cursor-pointer px-4 py-2 rounded-lg text-xs font-semibold text-zinc-400 border border-dark-border hover:border-dark-border2 hover:text-white transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => toggleDiscord(false)}
-                  className="flex-1 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 transition-all"
+                  className="flex-1 cursor-pointer px-4 py-2 rounded-lg text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 transition-all"
                 >
                   Yes, Pause Alerts
                 </button>
