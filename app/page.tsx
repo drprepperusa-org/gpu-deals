@@ -95,6 +95,7 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([{ msg: 'System online. Ready to fetch news.', type: 'info' }]);
   const [discordEnabled, setDiscordEnabled] = useState(true);
   const [togglingDiscord, setTogglingDiscord] = useState(false);
+  const [showDiscordModal, setShowDiscordModal] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -112,9 +113,19 @@ export default function Dashboard() {
     } catch { /* ignore */ }
   }
 
-  async function toggleDiscord() {
+  function handleToggleDiscord() {
+    if (discordEnabled) {
+      // Disabling — show confirmation modal
+      setShowDiscordModal(true);
+    } else {
+      // Re-enabling — no confirmation needed
+      toggleDiscord(true);
+    }
+  }
+
+  async function toggleDiscord(newVal: boolean) {
+    setShowDiscordModal(false);
     setTogglingDiscord(true);
-    const newVal = !discordEnabled;
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -332,7 +343,7 @@ export default function Dashboard() {
                       <span className="text-[10px] font-bold tracking-widest text-zinc-500">DISCORD</span>
                     </div>
                     <button
-                      onClick={toggleDiscord}
+                      onClick={handleToggleDiscord}
                       disabled={togglingDiscord}
                       className={`relative w-9 h-5 rounded-full transition-colors ${discordEnabled ? 'bg-accent2' : 'bg-dark-border2'} ${togglingDiscord ? 'opacity-50' : ''}`}
                     >
@@ -383,6 +394,43 @@ export default function Dashboard() {
             <span className="text-[10px] text-zinc-800 font-mono">GPU DEALS v2.0</span>
           </div>
         </div>
+
+        {/* ═══ DISCORD DISABLE MODAL ═══ */}
+        {showDiscordModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-dark-bg/70 backdrop-blur-sm" onClick={() => setShowDiscordModal(false)} />
+            <div className="relative panel rounded-xl p-6 w-full max-w-sm fade-in">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                  <BellOff className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Pause Discord Alerts?</h3>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">You won&apos;t receive GPU news in Discord</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-zinc-400 mb-5 leading-relaxed">
+                The daily cron job will still run, but no messages will be sent to your Discord channel. You can re-enable alerts anytime.
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowDiscordModal(false)}
+                  className="flex-1 px-4 py-2 rounded-lg text-xs font-semibold text-zinc-400 border border-dark-border hover:border-dark-border2 hover:text-white transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => toggleDiscord(false)}
+                  className="flex-1 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 transition-all"
+                >
+                  Yes, Pause Alerts
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
