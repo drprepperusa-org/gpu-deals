@@ -1,9 +1,7 @@
 /**
  * Scrapes real GPU/AI industry news from Google News.
- * This is the primary data source — all content is live, nothing static.
+ * Uses plain fetch + HTML parsing — no Puppeteer needed.
  */
-
-import { getBrowser, closeBrowser } from './browser';
 
 export interface NewsItem {
   headline: string;
@@ -13,38 +11,30 @@ export interface NewsItem {
 }
 
 const NEWS_QUERIES = [
-  // GPU pricing & market
-  'GPU price drop 2026',
+  'GPU price drop',
   'NVIDIA GPU price news',
   'RTX 5090 price',
   'RTX 4090 price drop',
   'AMD Radeon GPU price',
   'GPU market trend',
-
-  // Industry & launches
   'NVIDIA news today',
   'AMD GPU news today',
   'new GPU release 2026',
   'GPU benchmark review',
   'NVIDIA earnings',
   'Intel Arc GPU news',
-
-  // AI & datacenter
   'AI GPU demand news',
   'H100 H200 B200 news',
   'datacenter GPU news',
   'cloud GPU pricing',
-
-  // Supply & crypto
   'GPU shortage supply chain',
   'GPU stock availability',
-  'GPU mining crypto news',
   'GPU restock alert',
 ];
 
 /**
- * Scrape Google News for real GPU headlines.
- * Rotates 5 queries per run for variety.
+ * Scrape Google News RSS for real GPU headlines.
+ * Google News RSS feeds don't need a browser — just fetch XML.
  */
 export async function scrapeNews(): Promise<NewsItem[]> {
   const allNews: NewsItem[] = [];
@@ -57,62 +47,30 @@ export async function scrapeNews(): Promise<NewsItem[]> {
     .map(x => x.q)
     .slice(0, 5);
 
-  try {
-    const browser = await getBrowser();
+  for (const query of shuffled) {
+    try {
+      // Google News RSS — no browser needed
+      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
 
-    for (const query of shuffled) {
-      const page = await browser.newPage();
-      try {
-        await page.evaluateOnNewDocument(() => {
-          Object.defineProperty(navigator, 'webdriver', { get: () => false });
-        });
-        await page.setRequestInterception(true);
-        page.on('request', r => {
-          if (['image', 'font', 'media', 'stylesheet'].includes(r.resourceType())) r.abort();
-          else r.continue();
-        });
+      const res = await fetch(rssUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      });
 
-        const url = `https://news.google.com/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
-
-        try {
-          await page.goto(url, { waitUntil: 'load', timeout: 20000 });
-        } catch { /* redirect expected */ }
-
-        await new Promise(r => setTimeout(r, 3000));
-
-        const items: NewsItem[] = await page.evaluate(() => {
-          const results: { headline: string; source: string; link: string; time: string }[] = [];
-          const articles = document.querySelectorAll('article, [data-n-tid]');
-
-          for (const art of articles) {
-            const linkEl = art.querySelector('a[href]');
-            const headline = (art as HTMLElement).innerText?.split('\n').filter((l: string) => l.trim().length > 20)?.[0]?.trim();
-            if (!headline || !linkEl) continue;
-
-            const allText = (art as HTMLElement).innerText || '';
-            const lines = allText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
-
-            const source = lines.find((l: string) => l.length > 2 && l.length < 40 && l !== headline) || 'News';
-            const time = lines.find((l: string) => l.includes('ago') || l.includes('hour') || l.includes('day') || l.includes('min')) || '';
-
-            const href = (linkEl as HTMLAnchorElement).href;
-
-            if (headline.length > 15 && results.length < 6) {
-              results.push({ headline: headline.slice(0, 120), source, link: href, time });
-            }
-          }
-          return results;
-        });
-
-        allNews.push(...items);
-        await page.close();
-      } catch (err) {
-        console.error(`[News] Error scraping "${query}":`, (err as Error).message);
-        await page.close().catch(() => {});
+      if (!res.ok) {
+        console.error(`[News] HTTP ${res.status} for "${query}"`);
+        continue;
       }
+
+      const xml = await res.text();
+
+      // Parse RSS XML items
+      const items = parseRssItems(xml);
+      allNews.push(...items);
+    } catch (err) {
+      console.error(`[News] Error fetching "${query}":`, (err as Error).message);
     }
-  } finally {
-    await closeBrowser();
   }
 
   // Deduplicate by headline similarity
@@ -125,4 +83,89 @@ export async function scrapeNews(): Promise<NewsItem[]> {
   });
 
   return deduped.slice(0, 15);
+}
+
+/**
+ * Parse Google News RSS XML into NewsItem array.
+ */
+function parseRssItems(xml: string): NewsItem[] {
+  const items: NewsItem[] = [];
+
+  // Match each <item>...</item> block
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let match;
+
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block = match[1];
+
+    const title = extractTag(block, 'title');
+    const link = extractTag(block, 'link');
+    const pubDate = extractTag(block, 'pubDate');
+    const source = extractTag(block, 'source');
+
+    if (!title || title.length < 15) continue;
+
+    // Convert pubDate to relative time
+    const time = pubDate ? getRelativeTime(pubDate) : '';
+
+    items.push({
+      headline: decodeHtmlEntities(title).slice(0, 120),
+      source: source || 'News',
+      link: link || '',
+      time,
+    });
+
+    if (items.length >= 6) break;
+  }
+
+  return items;
+}
+
+function extractTag(xml: string, tag: string): string {
+  // Handle CDATA: <tag><![CDATA[content]]></tag>
+  const cdataRegex = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></${tag}>`);
+  const cdataMatch = xml.match(cdataRegex);
+  if (cdataMatch) return cdataMatch[1].trim();
+
+  // Handle regular: <tag>content</tag>
+  const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`);
+  const match = xml.match(regex);
+  if (match) return match[1].trim();
+
+  // Handle self-closing or content after tag on same line
+  const lineRegex = new RegExp(`<${tag}[^>]*>\\s*([^<]+)`);
+  const lineMatch = xml.match(lineRegex);
+  if (lineMatch) return lineMatch[1].trim();
+
+  return '';
+}
+
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/');
+}
+
+function getRelativeTime(dateStr: string): string {
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
 }
