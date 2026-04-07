@@ -8,28 +8,29 @@ export interface NewsItem {
   source: string;
   link: string;
   time: string;
+  publishedAt: number; // timestamp for sorting
 }
 
 const NEWS_QUERIES = [
-  'GPU price drop',
-  'NVIDIA GPU price news',
-  'RTX 5090 price',
-  'RTX 4090 price drop',
-  'AMD Radeon GPU price',
-  'GPU market trend',
-  'NVIDIA news today',
-  'AMD GPU news today',
-  'new GPU release 2026',
-  'GPU benchmark review',
+  'GPU price',
+  'NVIDIA GPU',
+  'RTX 5090',
+  'RTX 4090',
+  'AMD Radeon GPU',
+  'GPU market',
+  'NVIDIA',
+  'AMD GPU',
+  'GPU release',
+  'GPU review',
   'NVIDIA earnings',
-  'Intel Arc GPU news',
-  'AI GPU demand news',
-  'H100 H200 B200 news',
-  'datacenter GPU news',
-  'cloud GPU pricing',
-  'GPU shortage supply chain',
-  'GPU stock availability',
-  'GPU restock alert',
+  'Intel Arc GPU',
+  'AI GPU',
+  'H100 H200 B200',
+  'datacenter GPU',
+  'cloud GPU',
+  'GPU shortage',
+  'GPU stock',
+  'GPU deal',
 ];
 
 /**
@@ -49,8 +50,8 @@ export async function scrapeNews(): Promise<NewsItem[]> {
 
   for (const query of shuffled) {
     try {
-      // Google News RSS — no browser needed
-      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+      // Google News RSS — filter to last 24h with "when:1d"
+      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query + ' when:1d')}&hl=en-US&gl=US&ceid=US:en`;
 
       const res = await fetch(rssUrl, {
         headers: {
@@ -73,14 +74,21 @@ export async function scrapeNews(): Promise<NewsItem[]> {
     }
   }
 
+  // Filter out articles older than 48 hours
+  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+  const recent = allNews.filter(n => n.publishedAt === 0 || n.publishedAt > cutoff);
+
   // Deduplicate by headline similarity
   const seen = new Set<string>();
-  const deduped = allNews.filter(n => {
+  const deduped = recent.filter(n => {
     const key = n.headline.toLowerCase().slice(0, 50);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+
+  // Sort newest first
+  deduped.sort((a, b) => b.publishedAt - a.publishedAt);
 
   return deduped.slice(0, 15);
 }
@@ -108,11 +116,14 @@ function parseRssItems(xml: string): NewsItem[] {
     // Convert pubDate to relative time
     const time = pubDate ? getRelativeTime(pubDate) : '';
 
+    const publishedAt = pubDate ? new Date(pubDate).getTime() : 0;
+
     items.push({
       headline: decodeHtmlEntities(title).slice(0, 120),
       source: source || 'News',
       link: link || '',
       time,
+      publishedAt,
     });
 
     if (items.length >= 6) break;

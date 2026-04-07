@@ -13,6 +13,7 @@ interface NewsItem {
   source: string;
   link: string;
   time: string;
+  publishedAt: number;
 }
 
 interface LogEntry { msg: string; type: string; }
@@ -92,22 +93,22 @@ export default function Dashboard() {
 
         {/* ═══ TOP BAR ═══ */}
         <header className="sticky top-0 z-50 border-b border-dark-border bg-dark-bg/80 backdrop-blur-xl">
-          <div className="max-w-[1100px] mx-auto px-6 h-14 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="max-w-[1100px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent2 flex items-center justify-center">
                 <Cpu className="w-4 h-4 text-white" />
               </div>
               <span className="text-sm font-bold text-white tracking-tight">OpenClaw</span>
-              <span className="text-[10px] text-zinc-600 font-mono">GPU NEWS</span>
+              <span className="text-[10px] text-zinc-600 font-mono hidden sm:inline">GPU NEWS</span>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] font-mono text-zinc-500">
                 <Radio className={`w-3 h-3 ${loading ? 'text-amber-400 animate-pulse' : loaded ? 'text-accent2' : 'text-zinc-600'}`} />
                 {loading ? 'FETCHING' : loaded ? 'LIVE' : 'OFFLINE'}
               </div>
-              <div className="h-4 w-px bg-dark-border" />
-              <span className="text-[11px] font-mono text-zinc-600">{clock}</span>
+              <div className="h-4 w-px bg-dark-border hidden sm:block" />
+              <span className="text-[11px] font-mono text-zinc-600 hidden sm:inline">{clock}</span>
               <div className="h-4 w-px bg-dark-border" />
               <button onClick={fetchNews} disabled={loading} className="p-1.5 rounded-lg hover:bg-dark-surface2 text-zinc-500 hover:text-white transition-all">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -116,10 +117,10 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <div className="max-w-[1100px] mx-auto px-6 py-6">
+        <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-4 sm:py-6">
 
           {/* ═══ STATS ROW ═══ */}
-          <div className="grid grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6">
             {[
               { label: 'HEADLINES', value: news.length, sub: 'from Google News', icon: Newspaper, color: 'text-accent' },
               { label: 'PRICE NEWS', value: price.length, sub: 'deals & drops', icon: TrendingDown, color: 'text-emerald-400' },
@@ -138,7 +139,7 @@ export default function Dashboard() {
           </div>
 
           {/* ═══ MAIN LAYOUT ═══ */}
-          <div className="grid grid-cols-[1fr_280px] gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 sm:gap-6">
 
             {/* LEFT: News */}
             <div className="space-y-4">
@@ -215,7 +216,7 @@ export default function Dashboard() {
                   <div className="w-2 h-2 rounded-full bg-accent2 pulse-ring text-accent2" />
                   <span className="text-xs text-zinc-400">Auto-posting every 12h</span>
                 </div>
-                <div className="text-[10px] text-zinc-600 mt-2">Next: 12:00 AM / PM UTC</div>
+                <div className="text-[10px] text-zinc-600 mt-2">Next: 12:00 PM UTC</div>
               </div>
 
               {/* Last Scraped */}
@@ -264,12 +265,12 @@ export default function Dashboard() {
 function NewsCard({ item }: { item: NewsItem }) {
   return (
     <a href={item.link} target="_blank" rel="noreferrer"
-      className="panel rounded-xl px-5 py-4 flex items-start justify-between hover:border-dark-border2 transition-all group block">
-      <div className="flex-1 min-w-0 mr-3">
-        <p className="text-[13px] text-zinc-300 font-medium leading-snug group-hover:text-white transition-colors">
+      className="panel rounded-xl px-4 sm:px-5 py-3 sm:py-4 flex items-start justify-between hover:border-dark-border2 transition-all group">
+      <div className="flex-1 min-w-0 mr-2 sm:mr-3">
+        <p className="text-xs sm:text-[13px] text-zinc-300 font-medium leading-snug group-hover:text-white transition-colors">
           {item.headline}
         </p>
-        <div className="flex items-center gap-2 mt-2 text-[10px] text-zinc-600">
+        <div className="flex items-center gap-2 mt-1.5 sm:mt-2 text-[10px] text-zinc-600">
           <span className="font-medium">{item.source}</span>
           {item.time && <><span>·</span><span>{item.time}</span></>}
         </div>
