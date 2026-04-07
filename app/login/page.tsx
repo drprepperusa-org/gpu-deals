@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Cpu, LogIn, UserPlus, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Cpu, LogIn, UserPlus, AlertCircle, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const router = useRouter();
 
   async function handleLogin(e: React.FormEvent) {
@@ -28,16 +29,19 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        router.push('/');
-        router.refresh();
+        setSuccess(true);
+        setTimeout(() => {
+          router.push('/');
+          router.refresh();
+        }, 800);
       } else {
         setError(data.error || 'Login failed');
+        setLoading(false);
       }
     } catch {
       setError('Connection error');
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   async function handleRegister(e: React.FormEvent) {
@@ -55,16 +59,19 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok) {
-        router.push('/');
-        router.refresh();
+        setSuccess(true);
+        setTimeout(() => {
+          router.push('/');
+          router.refresh();
+        }, 800);
       } else {
         setError(data.error || 'Registration failed');
+        setLoading(false);
       }
     } catch {
       setError('Connection error');
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   function switchMode(newMode: 'login' | 'register') {
@@ -128,11 +135,13 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full px-6 py-2.5 bg-gradient-to-r from-accent to-indigo-600 hover:from-accent/90 hover:to-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all glow-btn flex items-center justify-center gap-2"
+                disabled={loading || success}
+                className="w-full px-6 py-2.5 bg-gradient-to-r from-accent to-indigo-600 hover:from-accent/90 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all glow-btn flex items-center justify-center gap-2"
               >
-                {loading ? (
-                  <span className="animate-pulse">Signing in...</span>
+                {success ? (
+                  <><CheckCircle className="w-4 h-4 text-accent2" /> Welcome back!</>
+                ) : loading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Signing in...</>
                 ) : (
                   <><LogIn className="w-4 h-4" /> Sign In</>
                 )}
@@ -204,11 +213,13 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full px-6 py-2.5 bg-gradient-to-r from-accent2 to-teal-600 hover:from-accent2/90 hover:to-teal-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all glow-btn flex items-center justify-center gap-2"
+                disabled={loading || success}
+                className="w-full px-6 py-2.5 bg-gradient-to-r from-accent2 to-teal-600 hover:from-accent2/90 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all glow-btn flex items-center justify-center gap-2"
               >
-                {loading ? (
-                  <span className="animate-pulse">Creating account...</span>
+                {success ? (
+                  <><CheckCircle className="w-4 h-4 text-white" /> Account created!</>
+                ) : loading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Creating account...</>
                 ) : (
                   <><UserPlus className="w-4 h-4" /> Create Account</>
                 )}
@@ -225,6 +236,18 @@ export default function LoginPage() {
 
           <p className="text-center text-[10px] text-zinc-800 font-mono mt-6">GPU DEALS v2.0</p>
         </div>
+
+        {/* Success overlay */}
+        {success && (
+          <div className="fixed inset-0 z-50 bg-dark-bg/80 backdrop-blur-sm flex items-center justify-center fade-in">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent to-accent2 flex items-center justify-center">
+                <Loader2 className="w-6 h-6 text-white animate-spin" />
+              </div>
+              <p className="text-sm text-zinc-400">Redirecting to dashboard...</p>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
