@@ -2,90 +2,68 @@
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  Search, Download, ChevronDown, ChevronUp, MessageSquare, Clock,
-  Plus, BarChart3, DollarSign, TrendingDown, X,
+  Search, Download, ChevronDown, ChevronRight, MessageSquare, Clock,
+  Plus, BarChart3, DollarSign, X, Zap, Activity,
   ArrowUpRight, SlidersHorizontal, Cpu, Newspaper, Target, Building2,
-  Signal, ExternalLink, RefreshCw, Zap
+  ExternalLink, RefreshCw, Layers, Radio, Hash
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────
 
 interface BulkListing {
-  id: string;
-  title: string;
-  price: number;
-  pricePerUnit: number;
-  quantity: number;
-  gpuModel: string;
-  source: string;
-  seller: string;
-  condition: string;
-  link: string;
-  foundAt: string;
+  id: string; title: string; price: number; pricePerUnit: number;
+  quantity: number; gpuModel: string; source: string;
+  seller: string; condition: string; link: string; foundAt: string;
 }
 
 interface DatacenterLead {
-  id: string;
-  company: string;
-  website: string;
-  type: string;
-  description: string;
-  location: string;
-  outreachAngle: string;
-  status: string;
-  notes: string;
+  id: string; company: string; website: string; type: string;
+  description: string; location: string; outreachAngle: string;
+  status: string; notes: string;
 }
 
-interface IntelData {
-  marketPulse: string;
-  bestFind: string;
-  actionItems: string;
-  signal: string;
-}
+interface LogEntry { msg: string; type: string; }
 
-interface LogEntry {
-  msg: string;
-  type: string;
-}
+// ─── Dashboard ────────────────────────────────────────────
 
-// ─── Component ────────────────────────────────────────────
-
-export default function CommandCenter() {
-  // Intel state
+export default function Dashboard() {
   const [newsDigest, setNewsDigest] = useState('');
-  const [intel, setIntel] = useState<IntelData | null>(null);
   const [leads, setLeads] = useState<DatacenterLead[]>([]);
   const [intelLoaded, setIntelLoaded] = useState(false);
   const [intelLoading, setIntelLoading] = useState(false);
 
-  // Scanner state
   const [listings, setListings] = useState<BulkListing[]>([]);
   const [totalScanned, setTotalScanned] = useState(0);
   const [scanning, setScanning] = useState(false);
-  const [scanStatus, setScanStatus] = useState('Ready');
+  const [scanStatus, setScanStatus] = useState('Idle');
 
-  // UI state
   const [activeTab, setActiveTab] = useState<'deals' | 'leads' | 'news'>('deals');
   const [showFilters, setShowFilters] = useState(false);
   const [filterModel, setFilterModel] = useState('all');
-  const [logs, setLogs] = useState<LogEntry[]>([{ msg: 'Command Center initialized.', type: 'info' }]);
+  const [logs, setLogs] = useState<LogEntry[]>([{ msg: 'System online. Ready to scan.', type: 'info' }]);
   const [maxPages, setMaxPages] = useState(2);
   const [excludes, setExcludes] = useState(['broken', 'for parts', 'untested', 'as-is', 'not working', 'damaged', 'empty box', 'box only', 'mining rig frame']);
   const [newExclude, setNewExclude] = useState('');
+  const [clock, setClock] = useState('');
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadIntel();
+    const tick = () => setClock(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
   }, []);
 
+  useEffect(() => { loadIntel(); }, []);
+
   function log(msg: string, type = '') {
-    setLogs(prev => [...prev, { msg: new Date().toLocaleTimeString() + '  ' + msg, type }]);
+    setLogs(prev => [...prev.slice(-50), { msg: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' › ' + msg, type }]);
     setTimeout(() => logRef.current?.scrollTo(0, logRef.current.scrollHeight), 50);
   }
 
   async function loadIntel() {
     setIntelLoading(true);
-    log('Loading live market intel...', 'info');
+    log('Fetching market intel...', 'info');
     try {
       const res = await fetch('/api/intel');
       const data = await res.json();
@@ -94,56 +72,39 @@ export default function CommandCenter() {
         setListings(data.listings || []);
         setTotalScanned(data.totalScanned || 0);
         setNewsDigest(data.newsDigest || '');
-        setIntel(data.intel || null);
         setIntelLoaded(true);
-        log(`Intel loaded — ${data.listings?.length || 0} listings, ${data.totalScanned || 0} scanned`, 'ok');
-      } else {
-        log('Intel error: ' + data.error, 'err');
-      }
-    } catch (err) {
-      log('Failed to load intel: ' + (err as Error).message, 'err');
-    }
+        log(`Intel loaded — ${data.listings?.length || 0} listings found`, 'ok');
+      } else { log('Intel error: ' + data.error, 'err'); }
+    } catch (err) { log('Failed: ' + (err as Error).message, 'err'); }
     setIntelLoading(false);
   }
 
   async function runScanner() {
-    setScanning(true);
-    setScanStatus('Scanning...');
-    log(`Deep scan: ${maxPages} pages across rotated queries...`, 'info');
+    setScanning(true); setScanStatus('Scanning');
+    log(`Deep scan: ${maxPages} pages × 8 queries`, 'info');
     try {
       const res = await fetch('/api/deals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ maxPages, excludeKeywords: excludes }),
       });
       const data = await res.json();
       if (data.success) {
         setListings(data.listings || []);
         setTotalScanned(data.totalScanned || 0);
-        log(`Found ${data.listings?.length || 0} listings from ${data.totalScanned || 0} scanned`, 'ok');
-        setScanStatus(`${data.listings?.length || 0} deals found`);
-      } else {
-        log('Scan error: ' + data.error, 'err');
-        setScanStatus('Error');
-      }
-    } catch (err) {
-      log('Scan failed: ' + (err as Error).message, 'err');
-      setScanStatus('Error');
-    }
+        log(`Done — ${data.listings?.length || 0} listings from ${data.totalScanned || 0} scanned`, 'ok');
+        setScanStatus(`${data.listings?.length || 0} found`);
+      } else { log('Error: ' + data.error, 'err'); setScanStatus('Error'); }
+    } catch (err) { log('Failed: ' + (err as Error).message, 'err'); setScanStatus('Error'); }
     setScanning(false);
   }
 
   function exportCSV() {
     if (!listings.length) return;
     const h = ['GPU Model', 'Title', 'Price', 'Qty', 'Per Unit', 'Condition', 'Source', 'Seller', 'Link', 'Found At'];
-    const rows = listings.map(d => [
-      d.gpuModel, '"' + d.title.replace(/"/g, '""') + '"',
-      d.price, d.quantity, d.pricePerUnit, d.condition, d.source, d.seller,
-      '"' + d.link + '"', d.foundAt,
-    ]);
+    const rows = listings.map(d => [d.gpuModel, '"' + d.title.replace(/"/g, '""') + '"', d.price, d.quantity, d.pricePerUnit, d.condition, d.source, d.seller, '"' + d.link + '"', d.foundAt]);
     const blob = new Blob([[h.join(','), ...rows.map(r => r.join(','))].join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
-    Object.assign(document.createElement('a'), { href: url, download: 'gpu-intel-' + new Date().toISOString().slice(0, 10) + '.csv' }).click();
+    Object.assign(document.createElement('a'), { href: url, download: 'gpu-deals-' + new Date().toISOString().slice(0, 10) + '.csv' }).click();
     URL.revokeObjectURL(url);
   }
 
@@ -155,307 +116,358 @@ export default function CommandCenter() {
 
   const filteredListings = filterModel === 'all' ? listings : listings.filter(l => l.gpuModel === filterModel);
   const gpuModels = [...new Set(listings.map(l => l.gpuModel))].sort();
-  const cheapest = listings.length ? '$' + Math.min(...listings.map(l => l.pricePerUnit)).toLocaleString() : '--';
-
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-
-  // Parse signal keyword from AI text
-  const signalText = intel?.signal || '';
-  const signalIsBuy = signalText.toUpperCase().includes('BUY');
-  const signalIsHold = signalText.toUpperCase().includes('HOLD');
-  const signalColor = signalIsBuy ? 'emerald' : signalIsHold ? 'amber' : 'red';
+  const cheapest = listings.length ? Math.min(...listings.map(l => l.pricePerUnit)) : 0;
+  const avgPrice = listings.length ? Math.round(listings.reduce((s, l) => s + l.pricePerUnit, 0) / listings.length) : 0;
+  const bulkCount = listings.filter(l => l.quantity > 1).length;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6">
+    <>
+      <div className="mesh-bg" />
+      <div className="relative z-10 min-h-screen">
 
-      {/* ═══ HEADER ═══ */}
-      <header className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-600/20">
-            <Cpu className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">OpenClaw GPU Scanner</h1>
-            <p className="text-xs text-gray-500 mt-0.5">{today}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={loadIntel} disabled={intelLoading} className="p-2 rounded-xl glass glass-hover text-gray-500 hover:text-white transition-all" title="Refresh Intel">
-            <RefreshCw className={`w-3.5 h-3.5 ${intelLoading ? 'animate-spin' : ''}`} />
-          </button>
-          <div className="flex items-center gap-1.5 glass rounded-full px-3 py-1.5">
-            <MessageSquare className="w-3 h-3 text-gray-500" />
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-          </div>
-          <div className={`px-3 py-1.5 rounded-full text-xs font-semibold ${
-            scanning || intelLoading ? 'bg-amber-500/10 text-amber-400 animate-pulse' :
-            intelLoaded ? 'bg-emerald-500/10 text-emerald-400' : 'glass text-gray-400'
-          }`}>
-            {scanning ? 'Scanning' : intelLoading ? 'Loading' : intelLoaded ? 'Live' : 'Offline'}
-          </div>
-        </div>
-      </header>
-
-      {/* ═══ MARKET SIGNAL BANNER ═══ */}
-      {intel?.signal && (
-        <div className={`rounded-2xl p-5 mb-6 border fade-in bg-${signalColor}-500/5 border-${signalColor}-500/20`}>
-          <div className="flex items-start gap-4">
-            <div className={`p-2.5 rounded-xl bg-${signalColor}-500/10`}>
-              <Signal className={`w-5 h-5 text-${signalColor}-400`} />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-line">{intel.signal}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ TAB NAV ═══ */}
-      <div className="flex items-center gap-1 mb-6 glass rounded-xl p-1">
-        {[
-          { id: 'deals' as const, label: 'Deal Scanner', icon: Target },
-          { id: 'leads' as const, label: 'DC Leads', icon: Building2 },
-          { id: 'news' as const, label: 'Market News', icon: Newspaper },
-        ].map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all flex-1 justify-center ${
-              activeTab === tab.id ? 'bg-violet-600/20 text-violet-400 border border-violet-500/20' : 'text-gray-500 hover:text-gray-300 border border-transparent'
-            }`}>
-            <tab.icon className="w-3.5 h-3.5" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ═══ DEAL SCANNER TAB ═══ */}
-      {activeTab === 'deals' && (
-        <div className="space-y-6 fade-in">
-          {/* Run Controls */}
-          <section className="glass rounded-2xl p-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <button onClick={runScanner} disabled={scanning}
-                className="px-10 py-3.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all flex items-center gap-2.5 text-sm glow-btn">
-                {scanning
-                  ? <span className="flex items-center gap-2"><Clock className="w-4 h-4 animate-spin" /> Scanning...</span>
-                  : <span className="flex items-center gap-2"><Zap className="w-4 h-4" /> Scan for Deals</span>}
-              </button>
-              <div className="flex-1">
-                <p className="text-sm text-gray-300 font-medium">{scanStatus}</p>
-                <p className="text-[11px] text-gray-600 mt-0.5">8 rotated queries · Max {maxPages} pages · DC decommission focus</p>
+        {/* ═══ TOP BAR ═══ */}
+        <header className="sticky top-0 z-50 border-b border-dark-border bg-dark-bg/80 backdrop-blur-xl">
+          <div className="max-w-[1400px] mx-auto px-6 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent2 flex items-center justify-center">
+                <Cpu className="w-4 h-4 text-white" />
               </div>
-              {listings.length > 0 && (
-                <button onClick={exportCSV} className="px-4 py-2.5 glass glass-hover rounded-xl text-xs text-gray-400 hover:text-white transition-all flex items-center gap-1.5 font-medium">
-                  <Download className="w-3.5 h-3.5" /> CSV
-                </button>
+              <span className="text-sm font-bold text-white tracking-tight">OpenClaw</span>
+              <span className="text-[10px] text-zinc-600 font-mono">GPU MONITOR</span>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
+                <Radio className={`w-3 h-3 ${scanning || intelLoading ? 'text-amber-400 animate-pulse' : intelLoaded ? 'text-accent2' : 'text-zinc-600'}`} />
+                {scanning ? 'SCANNING' : intelLoaded ? 'LIVE' : 'OFFLINE'}
+              </div>
+              <div className="h-4 w-px bg-dark-border" />
+              <span className="text-[11px] font-mono text-zinc-600">{clock}</span>
+              <div className="h-4 w-px bg-dark-border" />
+              <button onClick={loadIntel} disabled={intelLoading} className="p-1.5 rounded-lg hover:bg-dark-surface2 text-zinc-500 hover:text-white transition-all">
+                <RefreshCw className={`w-3.5 h-3.5 ${intelLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-[1400px] mx-auto px-6 py-6">
+
+          {/* ═══ STATS ROW ═══ */}
+          <div className="grid grid-cols-4 gap-3 mb-6">
+            {[
+              { label: 'LISTINGS', value: listings.length, sub: 'active', icon: Layers, color: 'text-accent' },
+              { label: 'SCANNED', value: totalScanned, sub: 'total', icon: Activity, color: 'text-blue-400' },
+              { label: 'BEST $/UNIT', value: cheapest ? `$${cheapest.toLocaleString()}` : '—', sub: 'lowest', icon: DollarSign, color: 'text-accent2' },
+              { label: 'BULK LOTS', value: bulkCount, sub: `avg $${avgPrice.toLocaleString()}`, icon: Hash, color: 'text-amber-400' },
+            ].map((s, i) => (
+              <div key={i} className="panel rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[10px] font-bold tracking-widest text-zinc-600">{s.label}</span>
+                  <s.icon className={`w-3.5 h-3.5 ${s.color} opacity-50`} />
+                </div>
+                <div className={`text-2xl font-bold text-white tracking-tight count-up`}>{s.value}</div>
+                <div className="text-[10px] text-zinc-600 mt-0.5">{s.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* ═══ MAIN LAYOUT ═══ */}
+          <div className="grid grid-cols-[1fr_320px] gap-6">
+
+            {/* LEFT: Content */}
+            <div className="space-y-4">
+
+              {/* Tab Nav */}
+              <div className="flex items-center gap-1">
+                {[
+                  { id: 'deals' as const, label: 'Deal Scanner', icon: Target },
+                  { id: 'leads' as const, label: 'DC Leads', icon: Building2 },
+                  { id: 'news' as const, label: 'News', icon: Newspaper },
+                ].map(tab => (
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === tab.id
+                        ? 'bg-accent/10 text-accent border border-accent/20'
+                        : 'text-zinc-500 hover:text-zinc-300 hover:bg-dark-surface2 border border-transparent'
+                    }`}>
+                    <tab.icon className="w-3.5 h-3.5" />
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* ═══ DEALS TAB ═══ */}
+              {activeTab === 'deals' && (
+                <div className="space-y-4 fade-in">
+
+                  {/* Controls */}
+                  <div className="panel rounded-xl p-5">
+                    <div className="flex items-center gap-4">
+                      <button onClick={runScanner} disabled={scanning}
+                        className="px-6 py-2.5 bg-gradient-to-r from-accent to-indigo-600 hover:from-accent/90 hover:to-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all glow-btn flex items-center gap-2">
+                        {scanning
+                          ? <><Clock className="w-3.5 h-3.5 animate-spin" /> Scanning</>
+                          : <><Zap className="w-3.5 h-3.5" /> Scan Now</>}
+                      </button>
+                      <div className="flex-1">
+                        <div className="text-xs text-zinc-300 font-medium">{scanStatus}</div>
+                        <div className="text-[10px] text-zinc-600 mt-0.5">8 queries · {maxPages} pages · DC decommission focus</div>
+                      </div>
+                      {listings.length > 0 && (
+                        <button onClick={exportCSV} className="px-3 py-2 rounded-lg text-[11px] text-zinc-500 hover:text-white hover:bg-dark-surface2 transition-all flex items-center gap-1.5 border border-dark-border">
+                          <Download className="w-3 h-3" /> Export
+                        </button>
+                      )}
+                    </div>
+                    {scanning && (
+                      <div className="h-0.5 bg-dark-surface2 rounded-full overflow-hidden mt-4">
+                        <div className="h-full bg-gradient-to-r from-accent to-accent2 rounded-full animate-pulse" style={{ width: '75%' }} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Filters toggle */}
+                  <button onClick={() => setShowFilters(!showFilters)}
+                    className="w-full panel rounded-xl px-5 py-3 flex items-center justify-between hover:border-dark-border2 transition-all">
+                    <div className="flex items-center gap-2">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-600" />
+                      <span className="text-xs text-zinc-400">Filters</span>
+                    </div>
+                    <ChevronDown className={`w-3.5 h-3.5 text-zinc-600 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {showFilters && (
+                    <div className="panel rounded-xl p-5 space-y-5 fade-in">
+                      <div>
+                        <div className="text-[10px] font-bold tracking-widest text-zinc-600 mb-2">EXCLUDE KEYWORDS</div>
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {excludes.map((kw, i) => (
+                            <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-rose-500/8 text-rose-400 border border-rose-500/10">
+                              {kw}
+                              <button onClick={() => setExcludes(excludes.filter((_, j) => j !== i))} className="opacity-40 hover:opacity-100"><X className="w-2.5 h-2.5" /></button>
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <input type="text" value={newExclude} onChange={e => setNewExclude(e.target.value)} onKeyDown={e => e.key === 'Enter' && addExclude()} placeholder="Add..."
+                            className="px-3 py-1.5 bg-dark-bg border border-dark-border rounded-lg text-[11px] text-zinc-300 outline-none focus:border-accent/50 w-36 transition-colors" />
+                          <button onClick={addExclude} className="px-2.5 py-1.5 rounded-lg text-[11px] text-zinc-500 hover:text-white border border-dark-border hover:border-dark-border2 transition-all"><Plus className="w-3 h-3" /></button>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold tracking-widest text-zinc-600 mb-2">PAGES PER QUERY</div>
+                        <div className="flex items-center gap-3">
+                          <input type="range" min={1} max={5} value={maxPages} onChange={e => setMaxPages(parseInt(e.target.value))} className="flex-1 accent-accent h-0.5" />
+                          <span className="text-xs font-mono text-zinc-400 w-6 text-right">{maxPages}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Results */}
+                  {listings.length > 0 ? (
+                    <div className="panel rounded-xl overflow-hidden">
+                      <div className="px-5 py-3 border-b border-dark-border flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-white">{filteredListings.length}</span>
+                          <span className="text-[10px] text-zinc-600">listings</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => setFilterModel('all')}
+                            className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${filterModel === 'all' ? 'bg-accent/10 text-accent' : 'text-zinc-600 hover:text-zinc-300'}`}>All</button>
+                          {gpuModels.map(m => (
+                            <button key={m} onClick={() => setFilterModel(m)}
+                              className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${filterModel === m ? 'bg-accent/10 text-accent' : 'text-zinc-600 hover:text-zinc-300'}`}>{m}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="max-h-[520px] overflow-y-auto scrollbar-thin">
+                        {filteredListings.map((d) => {
+                          const cl = (d.condition || '').toLowerCase();
+                          const condColor = cl.includes('new') && !cl.includes('pre-owned') ? 'text-emerald-400 bg-emerald-500/8' : cl.includes('refurb') ? 'text-amber-400 bg-amber-500/8' : 'text-blue-400 bg-blue-500/8';
+                          return (
+                            <a key={d.id} href={d.link} target="_blank" rel="noreferrer"
+                              className="flex items-center gap-4 px-5 py-3 border-b border-dark-border/50 hover:bg-white/[0.015] transition-colors group">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-accent/8 text-accent border border-accent/10">{d.gpuModel}</span>
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${condColor}`}>{d.condition || 'N/A'}</span>
+                                  {d.quantity > 1 && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/8 text-amber-400">{d.quantity}×</span>}
+                                </div>
+                                <p className="text-xs text-zinc-300 truncate group-hover:text-white transition-colors">{d.title}</p>
+                                <p className="text-[10px] text-zinc-600 mt-0.5">{d.seller}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="text-sm font-bold text-white">${d.price.toLocaleString()}</div>
+                                {d.quantity > 1 && <div className="text-[10px] text-accent2">${d.pricePerUnit}/ea</div>}
+                              </div>
+                              <ArrowUpRight className="w-3.5 h-3.5 text-zinc-700 group-hover:text-accent transition-colors shrink-0" />
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : !scanning ? (
+                    <div className="panel rounded-xl py-20 text-center">
+                      <div className="w-12 h-12 rounded-xl bg-dark-surface2 flex items-center justify-center mx-auto mb-4">
+                        <Search className="w-5 h-5 text-zinc-700" />
+                      </div>
+                      <p className="text-xs text-zinc-600">Hit <span className="text-accent font-semibold">Scan Now</span> to find GPU deals</p>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* ═══ LEADS TAB ═══ */}
+              {activeTab === 'leads' && (
+                <div className="space-y-3 fade-in">
+                  {leads.map((lead) => (
+                    <div key={lead.id} className="panel rounded-xl p-5 group">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-white">{lead.company}</h3>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            lead.type === 'ITAD' ? 'bg-blue-500/8 text-blue-400' :
+                            lead.type === 'Liquidator' ? 'bg-amber-500/8 text-amber-400' :
+                            'bg-accent/8 text-accent'
+                          }`}>{lead.type}</span>
+                        </div>
+                        <a href={`https://${lead.website}`} target="_blank" rel="noreferrer" className="text-[10px] text-zinc-600 hover:text-accent flex items-center gap-1 transition-colors">
+                          {lead.website} <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                      <p className="text-[11px] text-zinc-500 mb-3 leading-relaxed">{lead.description}</p>
+                      <div className="p-3 rounded-lg bg-accent/[0.03] border border-accent/10">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Target className="w-3 h-3 text-accent" />
+                          <span className="text-[10px] font-bold text-accent">OUTREACH</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-400">{lead.outreachAngle}</p>
+                      </div>
+                      <div className="flex items-center gap-3 mt-3 text-[10px] text-zinc-600">
+                        <span>📍 {lead.location}</span>
+                        {lead.notes && <span className="truncate">💡 {lead.notes}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ═══ NEWS TAB ═══ */}
+              {activeTab === 'news' && (
+                <div className="fade-in">
+                  {newsDigest ? (
+                    <div className="panel rounded-xl p-6">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Newspaper className="w-4 h-4 text-accent" />
+                        <span className="text-xs font-bold text-white">GPU Market News</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent2/8 text-accent2 font-bold">LIVE</span>
+                      </div>
+                      <div className="text-[13px] text-zinc-400 leading-relaxed whitespace-pre-line">{newsDigest}</div>
+                    </div>
+                  ) : intelLoading ? (
+                    <div className="panel rounded-xl p-16 text-center">
+                      <RefreshCw className="w-6 h-6 text-accent mx-auto mb-3 animate-spin" />
+                      <p className="text-xs text-zinc-500">Loading news...</p>
+                    </div>
+                  ) : (
+                    <div className="panel rounded-xl p-16 text-center">
+                      <Newspaper className="w-6 h-6 text-zinc-700 mx-auto mb-3" />
+                      <p className="text-xs text-zinc-600">Refresh to load latest GPU news</p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-            {scanning && <div className="h-1 bg-dark-surface2 rounded-full overflow-hidden mt-5"><div className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full animate-pulse" style={{ width: '80%' }} /></div>}
-          </section>
 
-          {/* Filters */}
-          <button onClick={() => setShowFilters(!showFilters)}
-            className="w-full glass glass-hover rounded-2xl px-6 py-4 flex items-center justify-between transition-all">
-            <div className="flex items-center gap-2.5">
-              <SlidersHorizontal className="w-4 h-4 text-gray-500" />
-              <span className="text-sm font-medium text-gray-300">Scan Settings</span>
-            </div>
-            {showFilters ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
-          </button>
-          {showFilters && (
-            <div className="glass rounded-2xl p-6 space-y-6 fade-in">
-              <div>
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-3">Exclude Keywords</h3>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {excludes.map((kw, i) => (
-                    <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/15">
-                      {kw}
-                      <button onClick={() => setExcludes(excludes.filter((_, j) => j !== i))} className="opacity-40 hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
-                    </span>
-                  ))}
+            {/* RIGHT: Sidebar */}
+            <div className="space-y-4">
+
+              {/* Discord Status */}
+              <div className="panel-solid rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <MessageSquare className="w-3.5 h-3.5 text-accent" />
+                  <span className="text-[10px] font-bold tracking-widest text-zinc-500">DISCORD FEED</span>
                 </div>
-                <div className="flex gap-2">
-                  <input type="text" value={newExclude} onChange={e => setNewExclude(e.target.value)} onKeyDown={e => e.key === 'Enter' && addExclude()} placeholder="Add keyword..."
-                    className="px-3 py-2 bg-dark-bg border border-dark-border rounded-xl text-xs text-gray-200 outline-none focus:border-violet-500 w-44 transition-colors" />
-                  <button onClick={addExclude} className="px-3 py-2 glass glass-hover rounded-xl text-xs text-gray-400 hover:text-white flex items-center gap-1 transition-all"><Plus className="w-3 h-3" /> Add</button>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-accent2 pulse-ring text-accent2" />
+                  <span className="text-xs text-zinc-400">Auto-posting every cycle</span>
                 </div>
               </div>
-              <div>
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">Max Pages per Query</h3>
-                <div className="flex items-center gap-3">
-                  <input type="range" min={1} max={5} value={maxPages} onChange={e => setMaxPages(parseInt(e.target.value))} className="flex-1 accent-violet-500 h-1" />
-                  <span className="text-sm font-bold text-gray-300 min-w-[40px] text-right">{maxPages}</span>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* Stats */}
-          {listings.length > 0 && (
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { v: listings.length, l: 'Deals Found', c: 'text-emerald-400', Icon: TrendingDown },
-                { v: totalScanned, l: 'Scanned', c: 'text-blue-400', Icon: BarChart3 },
-                { v: cheapest, l: 'Best $/Unit', c: 'text-violet-400', Icon: DollarSign },
-              ].map((s, i) => (
-                <div key={i} className="stat-glow glass rounded-2xl p-5 text-center">
-                  <s.Icon className={`w-5 h-5 mx-auto mb-2 ${s.c} opacity-70`} />
-                  <div className={`text-2xl font-bold ${s.c} tracking-tight`}>{s.v}</div>
-                  <div className="text-[10px] text-gray-500 uppercase tracking-widest mt-1 font-semibold">{s.l}</div>
+              {/* Quick Leads */}
+              <div className="panel-solid rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-3.5 h-3.5 text-accent" />
+                    <span className="text-[10px] font-bold tracking-widest text-zinc-500">TOP LEADS</span>
+                  </div>
+                  <button onClick={() => setActiveTab('leads')} className="text-[10px] text-accent hover:text-accent/80 transition-colors">View all</button>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* Results Table */}
-          {listings.length > 0 ? (
-            <section className="glass rounded-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between flex-wrap gap-3">
-                <h2 className="text-sm font-semibold text-white">{filteredListings.length} Listings</h2>
-                <div className="flex items-center gap-1 flex-wrap">
-                  <button onClick={() => setFilterModel('all')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filterModel === 'all' ? 'bg-violet-600/20 text-violet-400 border border-violet-500/20' : 'text-gray-500 hover:text-gray-300 border border-transparent'}`}>All</button>
-                  {gpuModels.map(m => (
-                    <button key={m} onClick={() => setFilterModel(m)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filterModel === m ? 'bg-violet-600/20 text-violet-400 border border-violet-500/20' : 'text-gray-500 hover:text-gray-300 border border-transparent'}`}>{m}</button>
+                <div className="space-y-2">
+                  {leads.slice(0, 4).map(l => (
+                    <a key={l.id} href={`https://${l.website}`} target="_blank" rel="noreferrer"
+                      className="flex items-center justify-between p-2.5 rounded-lg hover:bg-dark-surface2 transition-colors group">
+                      <div className="min-w-0">
+                        <div className="text-xs text-zinc-300 font-medium truncate group-hover:text-white transition-colors">{l.company}</div>
+                        <div className="text-[10px] text-zinc-600">{l.type} · {l.location}</div>
+                      </div>
+                      <ChevronRight className="w-3 h-3 text-zinc-700 group-hover:text-accent transition-colors shrink-0" />
+                    </a>
                   ))}
                 </div>
               </div>
-              <div className="overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-white/[0.02] sticky top-0 z-10 backdrop-blur-sm">
-                      <th className="px-5 py-3.5 text-left text-[10px] font-bold uppercase tracking-widest text-gray-500">GPU</th>
-                      <th className="px-5 py-3.5 text-left text-[10px] font-bold uppercase tracking-widest text-gray-500">Title</th>
-                      <th className="px-5 py-3.5 text-left text-[10px] font-bold uppercase tracking-widest text-gray-500">Price</th>
-                      <th className="px-5 py-3.5 text-left text-[10px] font-bold uppercase tracking-widest text-gray-500">Qty</th>
-                      <th className="px-5 py-3.5 text-left text-[10px] font-bold uppercase tracking-widest text-gray-500">$/Unit</th>
-                      <th className="px-5 py-3.5 text-left text-[10px] font-bold uppercase tracking-widest text-gray-500">Condition</th>
-                      <th className="px-5 py-3.5"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredListings.map((d) => {
-                      const cl = (d.condition || '').toLowerCase();
-                      const condColor = cl.includes('new') && !cl.includes('pre-owned') ? 'text-emerald-400 bg-emerald-500/10' : cl.includes('refurb') ? 'text-amber-400 bg-amber-500/10' : 'text-blue-400 bg-blue-500/10';
+
+              {/* Top Models */}
+              {listings.length > 0 && (
+                <div className="panel-solid rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BarChart3 className="w-3.5 h-3.5 text-accent" />
+                    <span className="text-[10px] font-bold tracking-widest text-zinc-500">BY MODEL</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {gpuModels.map(m => {
+                      const count = listings.filter(l => l.gpuModel === m).length;
+                      const pct = Math.round((count / listings.length) * 100);
                       return (
-                        <tr key={d.id} className="hover:bg-white/[0.02] border-t border-white/[0.03] transition-colors group">
-                          <td className="px-5 py-3.5"><span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-violet-500/10 text-violet-400 border border-violet-500/10">{d.gpuModel}</span></td>
-                          <td className="px-5 py-3.5 max-w-[350px]">
-                            <a href={d.link} target="_blank" rel="noreferrer" className="text-gray-200 hover:text-violet-400 transition-colors" title={d.title}>
-                              {d.title.length > 60 ? d.title.slice(0, 57) + '...' : d.title}
-                            </a>
-                          </td>
-                          <td className="px-5 py-3.5 font-bold text-emerald-400 whitespace-nowrap">${d.price.toLocaleString()}</td>
-                          <td className="px-5 py-3.5 text-gray-400">{d.quantity > 1 ? `${d.quantity}x` : '1'}</td>
-                          <td className="px-5 py-3.5 font-semibold text-white whitespace-nowrap">${d.pricePerUnit.toLocaleString()}</td>
-                          <td className="px-5 py-3.5"><span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${condColor}`}>{d.condition || 'N/A'}</span></td>
-                          <td className="px-5 py-3.5">
-                            <a href={d.link} target="_blank" rel="noreferrer" className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-violet-400 transition-all">
-                              <ArrowUpRight className="w-3.5 h-3.5" />
-                            </a>
-                          </td>
-                        </tr>
+                        <div key={m} className="flex items-center gap-2">
+                          <span className="text-[10px] text-zinc-400 w-20 truncate">{m}</span>
+                          <div className="flex-1 h-1 bg-dark-border rounded-full overflow-hidden">
+                            <div className="h-full bg-accent/40 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-[10px] text-zinc-600 w-6 text-right">{count}</span>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          ) : !scanning ? (
-            <section className="glass rounded-2xl p-20 text-center">
-              <Search className="w-8 h-8 text-gray-700 mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">Hit <strong className="text-violet-400">Scan for Deals</strong> to search for bulk GPU listings.</p>
-            </section>
-          ) : null}
-        </div>
-      )}
-
-      {/* ═══ LEADS TAB ═══ */}
-      {activeTab === 'leads' && (
-        <div className="space-y-4 fade-in">
-          <div className="flex items-center gap-2.5 mb-2">
-            <Building2 className="w-4 h-4 text-violet-400" />
-            <h2 className="text-sm font-semibold text-white">Datacenter Decommission Leads</h2>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 font-semibold">{leads.length}</span>
-          </div>
-
-          {leads.map((lead) => (
-            <div key={lead.id} className="glass rounded-2xl p-6 hover:border-violet-500/20 transition-all">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-base font-bold text-white">{lead.company}</h3>
-                  <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-md ${
-                    lead.type === 'ITAD' ? 'bg-blue-500/10 text-blue-400' :
-                    lead.type === 'Liquidator' ? 'bg-amber-500/10 text-amber-400' :
-                    'bg-violet-500/10 text-violet-400'
-                  }`}>{lead.type}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                    lead.status === 'new' ? 'bg-emerald-500/10 text-emerald-400' :
-                    lead.status === 'contacted' ? 'bg-amber-500/10 text-amber-400' :
-                    'bg-gray-500/10 text-gray-400'
-                  }`}>{lead.status.toUpperCase()}</span>
+                  </div>
                 </div>
-                <a href={`https://${lead.website}`} target="_blank" rel="noreferrer" className="text-gray-500 hover:text-violet-400 transition-colors flex items-center gap-1 text-xs">
-                  {lead.website} <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-              <p className="text-sm text-gray-400 mb-3">{lead.description}</p>
-              <div className="flex items-start gap-2 p-3 rounded-xl bg-violet-500/5 border border-violet-500/10">
-                <Target className="w-3.5 h-3.5 text-violet-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs font-semibold text-violet-400 mb-0.5">Outreach Angle</p>
-                  <p className="text-xs text-gray-400">{lead.outreachAngle}</p>
+              )}
+
+              {/* Activity Log */}
+              <div className="panel-solid rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-dark-border flex items-center gap-2">
+                  <Activity className="w-3 h-3 text-zinc-600" />
+                  <span className="text-[10px] font-bold tracking-widest text-zinc-600">LOG</span>
                 </div>
-              </div>
-              <div className="flex items-center gap-4 mt-3 text-[11px] text-gray-600">
-                <span>📍 {lead.location}</span>
-                {lead.notes && <span>💡 {lead.notes}</span>}
+                <div ref={logRef} className="px-4 py-2 font-mono text-[10px] max-h-40 overflow-y-auto scrollbar-thin space-y-0.5">
+                  {logs.map((l, i) => (
+                    <div key={i} className={
+                      l.type === 'ok' ? 'text-accent2' :
+                      l.type === 'err' ? 'text-rose-400' :
+                      l.type === 'info' ? 'text-blue-400/60' : 'text-zinc-700'
+                    }>{l.msg}</div>
+                  ))}
+                </div>
               </div>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* ═══ NEWS TAB ═══ */}
-      {activeTab === 'news' && (
-        <div className="space-y-4 fade-in">
-          <div className="flex items-center gap-2.5 mb-2">
-            <Newspaper className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-semibold text-white">GPU Industry News — {today}</h2>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold">AI-GENERATED</span>
           </div>
 
-          {newsDigest ? (
-            <section className="glass rounded-2xl p-6">
-              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-line">{newsDigest}</p>
-            </section>
-          ) : intelLoading ? (
-            <section className="glass rounded-2xl p-16 text-center">
-              <RefreshCw className="w-8 h-8 text-violet-400 mx-auto mb-3 animate-spin" />
-              <p className="text-gray-400 text-sm">Generating news digest with Gemini AI...</p>
-            </section>
-          ) : (
-            <section className="glass rounded-2xl p-16 text-center">
-              <Newspaper className="w-8 h-8 text-gray-700 mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">Click refresh in the header to load live news.</p>
-            </section>
-          )}
-        </div>
-      )}
-
-      {/* ═══ ACTIVITY LOG ═══ */}
-      <div className="glass rounded-2xl overflow-hidden mt-6">
-        <div className="px-6 py-3 border-b border-white/5">
-          <h2 className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Activity Log</h2>
-        </div>
-        <div ref={logRef} className="px-5 py-3 font-mono text-[11px] max-h-32 overflow-y-auto space-y-0.5 scrollbar-thin">
-          {logs.map((l, i) => (
-            <div key={i} className={l.type === 'ok' ? 'text-emerald-400' : l.type === 'err' ? 'text-red-400' : l.type === 'info' ? 'text-blue-400/70' : 'text-gray-600'}>{l.msg}</div>
-          ))}
+          <div className="text-center mt-8 pb-6">
+            <span className="text-[10px] text-zinc-800 font-mono">OPENCLAW GPU MONITOR v1.0</span>
+          </div>
         </div>
       </div>
-
-      <p className="text-center text-[10px] text-gray-700 mt-8 font-medium tracking-wide">OpenClaw GPU Scanner v1.0 — Discord updates every 2 min</p>
-    </div>
+    </>
   );
 }
