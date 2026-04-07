@@ -1,14 +1,5 @@
 import axios from 'axios';
-import type { BulkListing } from './types';
-
-interface DatacenterLead {
-  company: string;
-  website: string;
-  type: string;
-  description: string;
-  location: string;
-  outreachAngle: string;
-}
+import type { NewsItem } from './news-scraper';
 
 export class DiscordWebhook {
   private webhookUrl: string | undefined;
@@ -22,142 +13,94 @@ export class DiscordWebhook {
   }
 
   /**
-   * Post the GPU Intel Drop — main daily report.
+   * Post the daily GPU news report to Discord.
+   * 3 sections: Price/Deal news, Industry news, AI/Datacenter news.
    */
-  async sendIntelDrop(opts: {
-    listings: BulkListing[];
-    totalScanned: number;
-    leads: DatacenterLead[];
-    queriesUsed: string[];
-  }) {
-    if (!this.webhookUrl) return 'skipped';
+  async sendDailyNews(news: NewsItem[]) {
+    if (!this.webhookUrl || !news.length) return 'skipped';
 
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short' });
-
-    const bulkListings = opts.listings.filter(l => l.quantity > 1);
-    const dcListings = opts.listings.filter(l => {
-      const t = l.title.toLowerCase();
-      return t.includes('datacenter') || t.includes('data center') || t.includes('server pull') || t.includes('enterprise') || t.includes('liquidation') || t.includes('decommission');
-    });
-
-    // Price ranges
-    const prices = opts.listings.map(l => l.pricePerUnit).sort((a, b) => a - b);
-    const cheapest = prices[0] || 0;
-
-    // Model breakdown
-    const modelCounts: Record<string, { count: number; minPrice: number; maxPrice: number }> = {};
-    for (const l of opts.listings) {
-      if (!modelCounts[l.gpuModel]) modelCounts[l.gpuModel] = { count: 0, minPrice: Infinity, maxPrice: 0 };
-      modelCounts[l.gpuModel].count++;
-      modelCounts[l.gpuModel].minPrice = Math.min(modelCounts[l.gpuModel].minPrice, l.pricePerUnit);
-      modelCounts[l.gpuModel].maxPrice = Math.max(modelCounts[l.gpuModel].maxPrice, l.pricePerUnit);
-    }
+    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
     try {
-      // ── 1. INTEL DROP ──────────────────────────────────
-      let intelDrop = `🖥️ **GPU Intel Drop — ${dateStr}**\n\n`;
+      // Categorize news
+      const priceNews: NewsItem[] = [];
+      const industryNews: NewsItem[] = [];
+      const aiNews: NewsItem[] = [];
 
-      // Market Pulse
-      intelDrop += `**📊 Market Pulse**\n`;
-      const modelLines = Object.entries(modelCounts)
-        .sort((a, b) => b[1].count - a[1].count)
-        .slice(0, 6)
-        .map(([model, data]) => {
-          if (data.minPrice === data.maxPrice) return `• ${model}: $${data.minPrice.toLocaleString()}/unit (${data.count} listings)`;
-          return `• ${model}: $${data.minPrice.toLocaleString()}–$${data.maxPrice.toLocaleString()}/unit (${data.count} listings)`;
-        });
-      intelDrop += modelLines.join('\n') + '\n';
-      intelDrop += `• ${opts.listings.length} total listings found across ${opts.totalScanned} scanned\n`;
-      if (bulkListings.length > 0) intelDrop += `• ${bulkListings.length} bulk lot${bulkListings.length > 1 ? 's' : ''} detected\n`;
-      if (dcListings.length > 0) intelDrop += `• ${dcListings.length} datacenter/enterprise listing${dcListings.length > 1 ? 's' : ''} spotted\n`;
-      intelDrop += '\n';
-
-      // Bulk Lots Spotted
-      if (bulkListings.length > 0 || dcListings.length > 0) {
-        const highlights = [...dcListings, ...bulkListings]
-          .filter((v, i, a) => a.findIndex(x => x.id === v.id) === i)
-          .slice(0, 5);
-
-        intelDrop += `**🔍 Bulk Lots & DC Listings Spotted:**\n`;
-        for (const d of highlights) {
-          const qty = d.quantity > 1 ? `${d.quantity} units available @ $${d.pricePerUnit.toLocaleString()}/ea` : `$${d.price.toLocaleString()}`;
-          intelDrop += `• **${d.gpuModel}** — ${d.title.slice(0, 70)}${d.title.length > 70 ? '...' : ''}\n`;
-          intelDrop += `  ${qty} | ${d.condition} | ${d.seller}\n`;
-          intelDrop += `  ${d.link}\n`;
+      for (const n of news) {
+        const h = n.headline.toLowerCase();
+        if (h.includes('price') || h.includes('drop') || h.includes('deal') || h.includes('sale') || h.includes('discount') || h.includes('msrp') || h.includes('cheap') || h.includes('restock') || h.includes('stock') || h.includes('availability')) {
+          priceNews.push(n);
+        } else if (h.includes('ai ') || h.includes('datacenter') || h.includes('data center') || h.includes('cloud') || h.includes('h100') || h.includes('h200') || h.includes('b200') || h.includes('inference') || h.includes('training')) {
+          aiNews.push(n);
+        } else {
+          industryNews.push(n);
         }
-        intelDrop += '\n';
       }
 
-      // Top Deals
-      const topDeals = opts.listings.slice(0, 5);
-      if (topDeals.length > 0 && (bulkListings.length === 0 && dcListings.length === 0)) {
-        intelDrop += `**🔍 Top Listings Found:**\n`;
-        for (const d of topDeals) {
-          const qty = d.quantity > 1 ? ` (${d.quantity}x = $${d.pricePerUnit.toLocaleString()}/ea)` : '';
-          intelDrop += `• **${d.gpuModel}** — $${d.price.toLocaleString()}${qty} | ${d.condition}\n`;
-          intelDrop += `  ${d.title.slice(0, 65)}${d.title.length > 65 ? '...' : ''}\n`;
-          intelDrop += `  ${d.link}\n`;
+      // ── HEADER ──
+      let msg = `🖥️ **GPU News — ${dateStr}**\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+      // ── SECTION 1: Price & Deal News ──
+      if (priceNews.length > 0) {
+        msg += `💰 **GPU Prices & Deals**\n\n`;
+        for (const n of priceNews.slice(0, 4)) {
+          const time = n.time ? ` · _${n.time}_` : '';
+          msg += `▸ **${n.headline}**\n`;
+          msg += `  ${n.source}${time}\n\n`;
         }
-        intelDrop += '\n';
       }
 
-      // Action Item
-      intelDrop += `**⚡ Action Item**\n`;
-      if (dcListings.length > 0) {
-        intelDrop += `${dcListings.length} datacenter listings found this cycle. Review the links above — bulk lots from DC decommissions are the highest-value targets. Contact sellers directly for volume pricing.\n\n`;
-      } else if (bulkListings.length > 0) {
-        intelDrop += `${bulkListings.length} bulk lots spotted. Monitor these sellers for restocks. Set alerts for quantity listings from high-feedback sellers.\n\n`;
+      // ── SECTION 2: Industry News ──
+      if (industryNews.length > 0) {
+        msg += `📰 **Industry & Launches**\n\n`;
+        for (const n of industryNews.slice(0, 4)) {
+          const time = n.time ? ` · _${n.time}_` : '';
+          msg += `▸ **${n.headline}**\n`;
+          msg += `  ${n.source}${time}\n\n`;
+        }
+      }
+
+      // ── SECTION 3: AI & Datacenter ──
+      if (aiNews.length > 0) {
+        msg += `🤖 **AI & Datacenter**\n\n`;
+        for (const n of aiNews.slice(0, 4)) {
+          const time = n.time ? ` · _${n.time}_` : '';
+          msg += `▸ **${n.headline}**\n`;
+          msg += `  ${n.source}${time}\n\n`;
+        }
+      }
+
+      // If none categorized, just dump all
+      if (priceNews.length === 0 && industryNews.length === 0 && aiNews.length === 0) {
+        msg += `📰 **Today's Headlines**\n\n`;
+        for (const n of news.slice(0, 8)) {
+          const time = n.time ? ` · _${n.time}_` : '';
+          msg += `▸ **${n.headline}**\n`;
+          msg += `  ${n.source}${time}\n\n`;
+        }
+      }
+
+      msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `🕐 ${timeStr} · ${news.length} headlines scraped from Google News\n`;
+      msg += `_Next report: tomorrow at noon_`;
+
+      // Discord limit is 2000 chars — split if needed
+      if (msg.length <= 2000) {
+        await this.post({ content: msg });
       } else {
-        intelDrop += `No bulk or datacenter lots this cycle. Continue monitoring — decommission waves are cyclical. Focus outreach on ITAD contacts below.\n\n`;
-      }
-
-      // Flags
-      if (cheapest > 700) {
-        intelDrop += `⚠️ No sub-$700/unit bulk listings found this cycle.\n`;
-      }
-      intelDrop += `🕐 Checked: ${timeStr} | Next scan: scheduled\n`;
-
-      await this.post({ content: intelDrop.slice(0, 2000) });
-      await this.wait();
-
-      // ── 2. LEADS (if available) ────────────────────────
-      if (opts.leads.length > 0) {
-        let leadsMsg = `**🏢 Datacenter Decommissioning Contacts**\n\n`;
-        for (const lead of opts.leads.slice(0, 4)) {
-          leadsMsg += `**${lead.company}** (${lead.website})\n`;
-          leadsMsg += `• What: ${lead.description.slice(0, 100)}\n`;
-          leadsMsg += `• Outreach: "${lead.outreachAngle}"\n`;
-          leadsMsg += `• Location: ${lead.location}\n\n`;
-        }
-        leadsMsg += `---\n*${opts.leads.length} total leads tracked. Expand outreach to 3-5 contacts/week for best results.*`;
-
-        await this.post({ content: leadsMsg.slice(0, 2000) });
+        // Split into 2 messages
+        const midpoint = msg.lastIndexOf('\n\n', 1800);
+        const part1 = msg.slice(0, midpoint);
+        const part2 = msg.slice(midpoint + 2);
+        await this.post({ content: part1 });
         await this.wait();
+        await this.post({ content: part2 });
       }
 
-      return 'sent';
-    } catch (err) {
-      console.error('Discord intel drop error:', err);
-      return 'error';
-    }
-  }
-
-  /**
-   * Post GPU Industry News — real scraped headlines.
-   */
-  async sendNews(newsText: string) {
-    if (!this.webhookUrl || !newsText) return 'skipped';
-
-    const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-
-    try {
-      let msg = `**GPU Industry News — ${dateStr}**\n\n`;
-      msg += newsText;
-      msg += `\n\n📌 *Market Signal: Monitor datacenter decommission cycles. Bulk acquisition from DC teardowns remains the highest-margin opportunity.*`;
-
-      await this.post({ content: msg.slice(0, 2000) });
       return 'sent';
     } catch (err) {
       console.error('Discord news error:', err);
@@ -166,14 +109,14 @@ export class DiscordWebhook {
   }
 
   /**
-   * Heartbeat — quiet status when no new listings.
+   * Heartbeat — when no news found.
    */
-  async sendHeartbeat(totalScanned: number, queriesUsed: number) {
+  async sendHeartbeat() {
     if (!this.webhookUrl) return 'skipped';
     const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     try {
       await this.post({
-        content: `\`${timeStr}\` · Scanned ${totalScanned} listings across ${queriesUsed} queries · No new leads this cycle`,
+        content: `\`${timeStr}\` · No GPU news found this cycle. Will retry next run.`,
       });
       return 'sent';
     } catch { return 'error'; }

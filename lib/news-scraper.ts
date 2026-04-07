@@ -1,10 +1,11 @@
 /**
- * Scrapes real GPU news from Google News.
+ * Scrapes real GPU/AI industry news from Google News.
+ * This is the primary data source — all content is live, nothing static.
  */
 
 import { getBrowser, closeBrowser } from './browser';
 
-interface NewsItem {
+export interface NewsItem {
   headline: string;
   source: string;
   link: string;
@@ -12,38 +13,49 @@ interface NewsItem {
 }
 
 const NEWS_QUERIES = [
-  'NVIDIA GPU news',
-  'GPU market',
-  'NVIDIA earnings GPU',
-  'RTX 5090 GPU',
-  'RTX 4090 GPU price',
-  'AMD Radeon GPU',
-  'AI GPU demand',
-  'H100 H200 B200 GPU',
-  'GPU shortage supply',
-  'datacenter GPU',
-  'GPU pricing trend',
-  'NVIDIA stock GPU',
+  // GPU pricing & market
+  'GPU price drop 2026',
+  'NVIDIA GPU price news',
+  'RTX 5090 price',
+  'RTX 4090 price drop',
+  'AMD Radeon GPU price',
+  'GPU market trend',
+
+  // Industry & launches
+  'NVIDIA news today',
+  'AMD GPU news today',
+  'new GPU release 2026',
   'GPU benchmark review',
-  'new GPU release',
-  'GPU mining crypto',
-  'cloud GPU rental',
+  'NVIDIA earnings',
+  'Intel Arc GPU news',
+
+  // AI & datacenter
+  'AI GPU demand news',
+  'H100 H200 B200 news',
+  'datacenter GPU news',
+  'cloud GPU pricing',
+
+  // Supply & crypto
+  'GPU shortage supply chain',
+  'GPU stock availability',
+  'GPU mining crypto news',
+  'GPU restock alert',
 ];
 
 /**
- * Scrape Google News for real GPU/datacenter headlines.
- * Rotates queries each call for variety.
+ * Scrape Google News for real GPU headlines.
+ * Rotates 5 queries per run for variety.
  */
 export async function scrapeNews(): Promise<NewsItem[]> {
   const allNews: NewsItem[] = [];
 
-  // Pick 4 random queries this run
+  // Pick 5 random queries this run
   const now = Date.now();
   const shuffled = NEWS_QUERIES
     .map((q, i) => ({ q, sort: Math.sin(now / 1000 + i * 97.3) }))
     .sort((a, b) => a.sort - b.sort)
     .map(x => x.q)
-    .slice(0, 4);
+    .slice(0, 5);
 
   try {
     const browser = await getBrowser();
@@ -70,7 +82,6 @@ export async function scrapeNews(): Promise<NewsItem[]> {
 
         const items: NewsItem[] = await page.evaluate(() => {
           const results: { headline: string; source: string; link: string; time: string }[] = [];
-          // Google News renders articles in <article> or <a> with data-n-tid
           const articles = document.querySelectorAll('article, [data-n-tid]');
 
           for (const art of articles) {
@@ -81,9 +92,7 @@ export async function scrapeNews(): Promise<NewsItem[]> {
             const allText = (art as HTMLElement).innerText || '';
             const lines = allText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
 
-            // Source is usually a short line (publisher name)
             const source = lines.find((l: string) => l.length > 2 && l.length < 40 && l !== headline) || 'News';
-            // Time is usually like "2 hours ago", "1 day ago"
             const time = lines.find((l: string) => l.includes('ago') || l.includes('hour') || l.includes('day') || l.includes('min')) || '';
 
             const href = (linkEl as HTMLAnchorElement).href;
@@ -115,17 +124,5 @@ export async function scrapeNews(): Promise<NewsItem[]> {
     return true;
   });
 
-  return deduped.slice(0, 10);
-}
-
-/**
- * Format news items for Discord.
- */
-export function formatNewsForDiscord(items: NewsItem[]): string {
-  if (!items.length) return 'No GPU news found this cycle.';
-
-  return items.map(n => {
-    const time = n.time ? ` · ${n.time}` : '';
-    return `**${n.headline}**\n${n.source}${time}`;
-  }).join('\n\n');
+  return deduped.slice(0, 15);
 }

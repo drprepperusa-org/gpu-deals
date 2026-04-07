@@ -1,14 +1,9 @@
 import { NextResponse } from 'next/server';
-import { scanForDeals } from '@/lib/scraper';
-import { scrapeNews, formatNewsForDiscord } from '@/lib/news-scraper';
-import { scrapeLeads } from '@/lib/market-intel';
+import { scrapeNews } from '@/lib/news-scraper';
 import { DiscordWebhook } from '@/lib/discord';
-import { hasBeenPosted, markPosted, purgeExpired, saveListings } from '@/lib/dedup';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
-
-let lastNewsDate = '';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -25,66 +20,23 @@ export async function GET(request: Request) {
   }
 
   try {
-    await purgeExpired();
+    // Scrape real GPU news from Google News
+    const newsItems = await scrapeNews();
 
-    // 1. Scan for GPU deals
-    const { listings, totalScanned, queriesUsed } = await scanForDeals({ maxPages: 2 });
-
-    // 2. Filter to NEW only
-    const newLinks: string[] = [];
-    const newListings = [];
-    for (const l of listings) {
-      if (!(await hasBeenPosted(l.link))) {
-        newListings.push(l);
-        newLinks.push(l.link);
-      }
-    }
-
-    if (newLinks.length > 0) {
-      await markPosted(newLinks);
-      await saveListings(newListings);
-    }
-
-    // 3. Real news — once per day
-    const todayStr = new Date().toISOString().slice(0, 10);
-    let newsStatus = 'skipped';
-    if (todayStr !== lastNewsDate) {
-      try {
-        const newsItems = await scrapeNews();
-        if (newsItems.length > 0) {
-          const newsDigest = formatNewsForDiscord(newsItems);
-          newsStatus = await discord.sendNews(newsDigest);
-          if (newsStatus === 'sent') lastNewsDate = todayStr;
-        }
-      } catch (err) {
-        console.error('[News] Error:', (err as Error).message);
-        newsStatus = 'error';
-      }
-    }
-
-    // 4. Post intel drop to Discord
-    let discordStatus = 'no-new';
-    if (newListings.length > 0) {
-      const leads = await scrapeLeads();
-      discordStatus = await discord.sendIntelDrop({
-        listings: newListings,
-        totalScanned,
-        leads,
-        queriesUsed,
-      });
+    // Post to Discord
+    let discordStatus: string;
+    if (newsItems.length > 0) {
+      discordStatus = await discord.sendDailyNews(newsItems);
     } else {
-      discordStatus = await discord.sendHeartbeat(totalScanned, queriesUsed.length);
+      discordStatus = await discord.sendHeartbeat();
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
     return NextResponse.json({
       success: true,
-      total: listings.length,
-      new: newListings.length,
-      scanned: totalScanned,
+      newsCount: newsItems.length,
       discordStatus,
-      newsStatus,
       elapsed: `${elapsed}s`,
     });
   } catch (error) {
