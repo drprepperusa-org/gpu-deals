@@ -7,16 +7,10 @@
   ],
   "functions": {
     "app/api/cron/route.ts": {
-      "maxDuration": 120,
-      "memory": 1024
+      "maxDuration": 60
     },
-    "app/api/deals/route.ts": {
-      "maxDuration": 120,
-      "memory": 1024
-    },
-    "app/api/intel/route.ts": {
-      "maxDuration": 120,
-      "memory": 1024
+    "app/api/news/route.ts": {
+      "maxDuration": 60
     }
   }
 }
