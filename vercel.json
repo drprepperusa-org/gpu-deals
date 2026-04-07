@@ -1,0 +1,22 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron?secret=${CRON_SECRET}",
+      "schedule": "*/2 * * * *"
+    }
+  ],
+  "functions": {
+    "app/api/cron/route.ts": {
+      "maxDuration": 120,
+      "memory": 1024
+    },
+    "app/api/deals/route.ts": {
+      "maxDuration": 120,
+      "memory": 1024
+    },
+    "app/api/intel/route.ts": {
+      "maxDuration": 120,
+      "memory": 1024
+    }
+  }
+}
