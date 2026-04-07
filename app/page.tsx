@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Newspaper, Clock, Cpu, Activity, RefreshCw, Radio,
-  TrendingDown, Monitor, BrainCircuit, ExternalLink,
+  TrendingDown, Monitor, BrainCircuit, ExternalLink, LogOut,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────
@@ -49,6 +50,13 @@ export default function Dashboard() {
   const [clock, setClock] = useState('');
   const [logs, setLogs] = useState<LogEntry[]>([{ msg: 'System online. Ready to fetch news.', type: 'info' }]);
   const logRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+    router.refresh();
+  }
 
   useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -112,6 +120,9 @@ export default function Dashboard() {
               <div className="h-4 w-px bg-dark-border" />
               <button onClick={fetchNews} disabled={loading} className="p-1.5 rounded-lg hover:bg-dark-surface2 text-zinc-500 hover:text-white transition-all">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+              <button onClick={handleLogout} className="p-1.5 rounded-lg hover:bg-dark-surface2 text-zinc-500 hover:text-rose-400 transition-all" title="Sign out">
+                <LogOut className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
