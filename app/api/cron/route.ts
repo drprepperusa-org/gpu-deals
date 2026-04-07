@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
 import { scanForDeals } from '@/lib/scraper';
-import { analyzeNewListings } from '@/lib/gemini';
 import { scrapeNews, formatNewsForDiscord } from '@/lib/news-scraper';
+import { getKnownLeads } from '@/lib/market-intel';
 import { DiscordWebhook } from '@/lib/discord';
 import { hasBeenPosted, markPosted, purgeExpired, saveListings } from '@/lib/dedup';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
-// Track daily news (in-memory is fine — resets on cold start, sends news again)
 let lastNewsDate = '';
 
 export async function GET(request: Request) {
@@ -31,7 +30,7 @@ export async function GET(request: Request) {
     // 1. Scan for GPU deals
     const { listings, totalScanned, queriesUsed } = await scanForDeals({ maxPages: 2 });
 
-    // 2. Filter to NEW only (check Supabase)
+    // 2. Filter to NEW only
     const newLinks: string[] = [];
     const newListings = [];
     for (const l of listings) {
@@ -41,7 +40,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // Mark as posted + save to DB
     if (newLinks.length > 0) {
       await markPosted(newLinks);
       await saveListings(newListings);
@@ -55,7 +53,7 @@ export async function GET(request: Request) {
         const newsItems = await scrapeNews();
         if (newsItems.length > 0) {
           const newsDigest = formatNewsForDiscord(newsItems);
-          newsStatus = await discord.sendNewsDigest(newsDigest);
+          newsStatus = await discord.sendNews(newsDigest);
           if (newsStatus === 'sent') lastNewsDate = todayStr;
         }
       } catch (err) {
@@ -64,15 +62,14 @@ export async function GET(request: Request) {
       }
     }
 
-    // 4. Post deals to Discord
+    // 4. Post intel drop to Discord
     let discordStatus = 'no-new';
     if (newListings.length > 0) {
-      const analysis = analyzeNewListings(newListings);
-      discordStatus = await discord.sendDrop({
-        newListings,
-        totalThisScan: listings.length,
+      const leads = getKnownLeads();
+      discordStatus = await discord.sendIntelDrop({
+        listings: newListings,
         totalScanned,
-        aiAnalysis: analysis,
+        leads,
         queriesUsed,
       });
     } else {
