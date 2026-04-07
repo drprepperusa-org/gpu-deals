@@ -140,7 +140,7 @@ function scoreListing(listing: BulkListing): number {
 
 import { getBrowser, closeBrowser } from './browser';
 
-// ─── Scrape a single eBay search page ────────────────────
+// ─── Scrape a single search page ─────────────────────────
 
 interface RawListing {
   title: string;
@@ -170,7 +170,7 @@ async function scrapeEbayPage(url: string): Promise<RawListing[]> {
       }
     });
 
-    // Navigate — eBay challenge may cause a redirect
+    // Navigate — challenge page may cause a redirect
     try {
       await page.goto(url, { waitUntil: 'load', timeout: 30000 });
     } catch {
@@ -187,14 +187,14 @@ async function scrapeEbayPage(url: string): Promise<RawListing[]> {
 
       for (const card of cards) {
         const text = (card as HTMLElement).innerText || '';
-        if (text.includes('Shop on eBay')) continue;
+        if (text.includes('Shop on')) continue;
 
         // Find the item link
         const linkEl = card.querySelector('a[href*="/itm/"]');
         if (!linkEl) continue;
         const link = (linkEl as HTMLAnchorElement).href;
 
-        // Parse text — eBay renders: title | condition | price | shipping | seller
+        // Parse text: title | condition | price | shipping | seller
         const lines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
 
         // Title: first substantial line (skip "NEW LISTING", "SPONSORED" etc)
@@ -286,7 +286,7 @@ export async function scanForDeals(customConfig?: Partial<DealScanConfig>): Prom
               pricePerUnit: quantity > 1 ? Math.round(item.price / quantity) : item.price,
               quantity,
               gpuModel,
-              source: 'ebay',
+              source: 'web',
               seller: item.seller,
               condition: item.condition,
               link: item.link,

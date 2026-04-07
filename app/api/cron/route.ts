@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   try {
     await purgeExpired();
 
-    // 1. Scrape eBay
+    // 1. Scan for GPU deals
     const { listings, totalScanned, queriesUsed } = await scanForDeals({ maxPages: 2 });
 
     // 2. Filter to NEW only (check Supabase)

@@ -33,7 +33,7 @@ export interface BulkListing {
   pricePerUnit: number;
   quantity: number;
   gpuModel: string;
-  source: string;        // 'ebay' | 'wholesale' | 'liquidation' | 'auction'
+  source: string;
   seller: string;
   condition: string;
   link: string;

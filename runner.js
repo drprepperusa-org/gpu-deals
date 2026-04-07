@@ -4,7 +4,7 @@
  * OpenClaw GPU Scanner — 2-Minute Runner
  *
  * Hits /api/cron every 2 minutes to:
- *   1. Scrape eBay for datacenter GPU decommission deals
+ *   1. Scan for datacenter GPU decommission deals
  *   2. Dedup — only post NEW listings to Discord
  *   3. AI analysis via Gemini on new finds
  *   4. Daily news digest (once per day)

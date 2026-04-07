@@ -85,7 +85,7 @@ export default function CommandCenter() {
 
   async function loadIntel() {
     setIntelLoading(true);
-    log('Loading live market intel (Gemini AI + eBay scan)...', 'info');
+    log('Loading live market intel...', 'info');
     try {
       const res = await fetch('/api/intel');
       const data = await res.json();
@@ -108,7 +108,7 @@ export default function CommandCenter() {
 
   async function runScanner() {
     setScanning(true);
-    setScanStatus('Scanning eBay...');
+    setScanStatus('Scanning...');
     log(`Deep scan: ${maxPages} pages across rotated queries...`, 'info');
     try {
       const res = await fetch('/api/deals', {
@@ -364,7 +364,7 @@ export default function CommandCenter() {
           ) : !scanning ? (
             <section className="glass rounded-2xl p-20 text-center">
               <Search className="w-8 h-8 text-gray-700 mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">Hit <strong className="text-violet-400">Scan for Deals</strong> to search eBay for bulk GPU listings.</p>
+              <p className="text-gray-500 text-sm">Hit <strong className="text-violet-400">Scan for Deals</strong> to search for bulk GPU listings.</p>
             </section>
           ) : null}
         </div>

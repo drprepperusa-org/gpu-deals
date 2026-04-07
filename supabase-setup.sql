@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS listings (
   price_per_unit NUMERIC NOT NULL,
   quantity INTEGER DEFAULT 1,
   gpu_model TEXT,
-  source TEXT DEFAULT 'ebay',
+  source TEXT DEFAULT 'web',
   seller TEXT,
   condition TEXT,
   link TEXT UNIQUE,
