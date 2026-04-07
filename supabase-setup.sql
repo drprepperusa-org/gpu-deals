@@ -10,3 +10,18 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- Settings table for app configuration
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Default: Discord enabled
+INSERT INTO settings (key, value) VALUES ('discord_enabled', 'true')
+  ON CONFLICT (key) DO NOTHING;
+
+-- RLS policies
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all settings" ON settings FOR ALL USING (true) WITH CHECK (true);

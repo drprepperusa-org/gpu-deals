@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Newspaper, Clock, Cpu, Activity, RefreshCw, Radio,
-  TrendingDown, Monitor, BrainCircuit, ExternalLink, LogOut,
+  TrendingDown, Monitor, BrainCircuit, ExternalLink, LogOut, Bell, BellOff,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────
@@ -93,6 +93,8 @@ export default function Dashboard() {
   const [lastScraped, setLastScraped] = useState('');
   const [clock, setClock] = useState('');
   const [logs, setLogs] = useState<LogEntry[]>([{ msg: 'System online. Ready to fetch news.', type: 'info' }]);
+  const [discordEnabled, setDiscordEnabled] = useState(true);
+  const [togglingDiscord, setTogglingDiscord] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -102,6 +104,34 @@ export default function Dashboard() {
     router.refresh();
   }
 
+  async function loadDiscordSetting() {
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      if (data.success) setDiscordEnabled(data.discordEnabled);
+    } catch { /* ignore */ }
+  }
+
+  async function toggleDiscord() {
+    setTogglingDiscord(true);
+    const newVal = !discordEnabled;
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discordEnabled: newVal }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscordEnabled(newVal);
+        log(`Discord alerts ${newVal ? 'enabled' : 'paused'}`, newVal ? 'ok' : 'info');
+      }
+    } catch {
+      log('Failed to update Discord setting', 'err');
+    }
+    setTogglingDiscord(false);
+  }
+
   useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     tick();
@@ -109,7 +139,7 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => { fetchNews(); }, []);
+  useEffect(() => { fetchNews(); loadDiscordSetting(); }, []);
 
   function log(msg: string, type = '') {
     setLogs(prev => [...prev.slice(-50), { msg: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' › ' + msg, type }]);
@@ -296,15 +326,24 @@ export default function Dashboard() {
 
                 {/* Discord Status */}
                 <div className="panel-solid rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Activity className="w-3.5 h-3.5 text-accent" />
-                    <span className="text-[10px] font-bold tracking-widest text-zinc-500">DISCORD</span>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      {discordEnabled ? <Bell className="w-3.5 h-3.5 text-accent" /> : <BellOff className="w-3.5 h-3.5 text-zinc-600" />}
+                      <span className="text-[10px] font-bold tracking-widest text-zinc-500">DISCORD</span>
+                    </div>
+                    <button
+                      onClick={toggleDiscord}
+                      disabled={togglingDiscord}
+                      className={`relative w-9 h-5 rounded-full transition-colors ${discordEnabled ? 'bg-accent2' : 'bg-dark-border2'} ${togglingDiscord ? 'opacity-50' : ''}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${discordEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </button>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-accent2 pulse-ring text-accent2" />
-                    <span className="text-xs text-zinc-400">Auto-posting every 12h</span>
+                    <div className={`w-2 h-2 rounded-full ${discordEnabled ? 'bg-accent2 pulse-ring text-accent2' : 'bg-zinc-600'}`} />
+                    <span className="text-xs text-zinc-400">{discordEnabled ? 'Auto-posting daily at noon' : 'Alerts paused'}</span>
                   </div>
-                  <div className="text-[10px] text-zinc-600 mt-2">Next: 12:00 PM UTC</div>
+                  {discordEnabled && <div className="text-[10px] text-zinc-600 mt-2">Next: 12:00 PM UTC</div>}
                 </div>
 
                 {/* Last Scraped */}

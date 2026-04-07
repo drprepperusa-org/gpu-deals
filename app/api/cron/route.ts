@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { scrapeNews } from '@/lib/news-scraper';
 import { DiscordWebhook } from '@/lib/discord';
+import { getDiscordEnabled } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -13,6 +14,25 @@ export async function GET(request: Request) {
   }
 
   const startTime = Date.now();
+
+  // Check if Discord alerts are enabled
+  let discordPaused = false;
+  try {
+    const enabled = await getDiscordEnabled();
+    if (!enabled) discordPaused = true;
+  } catch {
+    // If settings check fails, default to sending
+  }
+
+  if (discordPaused) {
+    return NextResponse.json({
+      success: true,
+      newsCount: 0,
+      discordStatus: 'paused',
+      elapsed: '0s',
+    });
+  }
+
   const discord = new DiscordWebhook();
 
   if (!discord.isConfigured()) {
@@ -20,10 +40,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Scrape real GPU news from Google News
     const newsItems = await scrapeNews();
 
-    // Post to Discord
     let discordStatus: string;
     if (newsItems.length > 0) {
       discordStatus = await discord.sendDailyNews(newsItems);
