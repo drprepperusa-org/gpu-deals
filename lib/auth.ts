@@ -64,7 +64,8 @@ export async function createUser(email: string, password: string, name: string):
   });
 
   if (error) {
-    return { success: false, error: 'Failed to create account' };
+    console.error('[Auth] Create user error:', error.message, error.code);
+    return { success: false, error: error.message || 'Failed to create account' };
   }
 
   return { success: true };
