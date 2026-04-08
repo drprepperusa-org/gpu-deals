@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { NewsItem } from './news-scraper';
+import type { GpuListing, CompanyLead, MarketIntel } from './types';
 
 export class DiscordWebhook {
   private webhookUrl: string | undefined;
@@ -13,113 +14,137 @@ export class DiscordWebhook {
   }
 
   /**
-   * Post the daily GPU news report to Discord.
-   * 3 sections: Price/Deal news, Industry news, AI/Datacenter news.
+   * Post the full GPU Intel Drop — DJ Command Center format.
    */
-  async sendDailyNews(news: NewsItem[]) {
-    if (!this.webhookUrl || !news.length) return 'skipped';
+  async sendIntelDrop(opts: {
+    listings: GpuListing[];
+    leads: CompanyLead[];
+    intel: MarketIntel[];
+    news: NewsItem[];
+    actionItem: string;
+    totalScanned: number;
+  }) {
+    if (!this.webhookUrl) return 'skipped';
 
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
     try {
-      // Categorize news
-      const priceNews: NewsItem[] = [];
-      const industryNews: NewsItem[] = [];
-      const aiNews: NewsItem[] = [];
+      // ── MESSAGE 1: GPU INTEL DROP ──────────────────────
+      let msg1 = `🖥️ **GPU Intel Drop — ${dateStr}**\n`;
+      msg1 += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-      for (const n of news) {
-        const h = n.headline.toLowerCase();
-        if (h.includes('price') || h.includes('drop') || h.includes('deal') || h.includes('sale') || h.includes('discount') || h.includes('msrp') || h.includes('cheap') || h.includes('restock') || h.includes('stock') || h.includes('availability')) {
-          priceNews.push(n);
-        } else if (h.includes('ai ') || h.includes('datacenter') || h.includes('data center') || h.includes('cloud') || h.includes('h100') || h.includes('h200') || h.includes('b200') || h.includes('inference') || h.includes('training')) {
-          aiNews.push(n);
-        } else {
-          industryNews.push(n);
-        }
+      // Market Pulse
+      msg1 += `**📊 Market Pulse**\n`;
+      const modelCounts: Record<string, { count: number; min: number; max: number }> = {};
+      for (const l of opts.listings) {
+        if (!modelCounts[l.gpuModel]) modelCounts[l.gpuModel] = { count: 0, min: Infinity, max: 0 };
+        modelCounts[l.gpuModel].count++;
+        modelCounts[l.gpuModel].min = Math.min(modelCounts[l.gpuModel].min, l.pricePerUnit);
+        modelCounts[l.gpuModel].max = Math.max(modelCounts[l.gpuModel].max, l.pricePerUnit);
+      }
+      const sortedModels = Object.entries(modelCounts).sort((a, b) => b[1].count - a[1].count).slice(0, 6);
+      for (const [model, data] of sortedModels) {
+        const range = data.min === data.max
+          ? `$${data.min.toLocaleString()}`
+          : `$${data.min.toLocaleString()}–$${data.max.toLocaleString()}`;
+        msg1 += `• ${model}: ${range}/unit (${data.count} listings)\n`;
       }
 
-      // ── HEADER ──
-      let msg = `🖥️ **GPU News — ${dateStr}**\n`;
-      msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      const bulkCount = opts.listings.filter(l => l.quantity > 1).length;
+      msg1 += `• ${opts.listings.length} total listings from ${opts.totalScanned} scanned\n`;
+      if (bulkCount > 0) msg1 += `• ${bulkCount} bulk lot${bulkCount > 1 ? 's' : ''} detected\n`;
+      msg1 += '\n';
 
-      // ── SECTION 1: Price & Deal News ──
-      if (priceNews.length > 0) {
-        msg += `💰 **GPU Prices & Deals**\n\n`;
-        for (const n of priceNews.slice(0, 4)) {
-          const time = n.time ? ` · _${n.time}_` : '';
-          msg += `▸ [**${n.headline}**](${n.link})\n`;
-          msg += `  ${n.source}${time}\n\n`;
+      // Notable Bulk GPU Lots
+      const highlights = opts.listings
+        .filter(l => l.quantity > 1 || l.score >= 50)
+        .slice(0, 5);
+      if (highlights.length > 0) {
+        msg1 += `**🔍 Notable Bulk GPU Lots**\n`;
+        for (const d of highlights) {
+          const qty = d.quantity > 1 ? `${d.quantity}x @ $${d.pricePerUnit.toLocaleString()}/ea` : `$${d.price.toLocaleString()}`;
+          msg1 += `• **${d.gpuModel}** — ${qty} | ${d.condition}\n`;
+          msg1 += `  ${d.title.slice(0, 65)}\n`;
+          msg1 += `  ${d.link}\n`;
         }
+        msg1 += '\n';
       }
 
-      // ── SECTION 2: Industry News ──
-      if (industryNews.length > 0) {
-        msg += `📰 **Industry & Launches**\n\n`;
-        for (const n of industryNews.slice(0, 4)) {
-          const time = n.time ? ` · _${n.time}_` : '';
-          msg += `▸ [**${n.headline}**](${n.link})\n`;
-          msg += `  ${n.source}${time}\n\n`;
+      // Action Item
+      msg1 += `**⚡ Action Item**\n`;
+      msg1 += opts.actionItem + '\n\n';
+      msg1 += `🕐 ${timeStr} · Next scan: tomorrow at noon`;
+
+      await this.postSafe(msg1);
+      await this.wait();
+
+      // ── MESSAGE 2: COMPANY LEADS ──────────────────────
+      if (opts.leads.length > 0) {
+        let msg2 = `**🏢 GPU Supplier Leads Found**\n\n`;
+        for (const lead of opts.leads.slice(0, 5)) {
+          const priority = lead.priority === 'High' ? '🔴' : lead.priority === 'Medium' ? '🟡' : '🟢';
+          msg2 += `${priority} **${lead.company}** (${lead.type})\n`;
+          msg2 += `• ${lead.description.slice(0, 100)}\n`;
+          msg2 += `• GPUs: ${lead.gpuModels} · ${lead.location}\n`;
+          msg2 += `• https://${lead.website}\n\n`;
         }
-      }
+        msg2 += `_${opts.leads.length} total leads tracked. Prioritize ITAD/Liquidator contacts._`;
 
-      // ── SECTION 3: AI & Datacenter ──
-      if (aiNews.length > 0) {
-        msg += `🤖 **AI & Datacenter**\n\n`;
-        for (const n of aiNews.slice(0, 4)) {
-          const time = n.time ? ` · _${n.time}_` : '';
-          msg += `▸ [**${n.headline}**](${n.link})\n`;
-          msg += `  ${n.source}${time}\n\n`;
-        }
-      }
-
-      // If none categorized, just dump all
-      if (priceNews.length === 0 && industryNews.length === 0 && aiNews.length === 0) {
-        msg += `📰 **Today's Headlines**\n\n`;
-        for (const n of news.slice(0, 8)) {
-          const time = n.time ? ` · _${n.time}_` : '';
-          msg += `▸ [**${n.headline}**](${n.link})\n`;
-          msg += `  ${n.source}${time}\n\n`;
-        }
-      }
-
-      msg += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      msg += `🕐 ${timeStr} · ${news.length} headlines scraped from Google News\n`;
-      msg += `_Next report: tomorrow at noon_`;
-
-      // Discord limit is 2000 chars — split if needed
-      if (msg.length <= 2000) {
-        await this.post({ content: msg });
-      } else {
-        // Split into 2 messages
-        const midpoint = msg.lastIndexOf('\n\n', 1800);
-        const part1 = msg.slice(0, midpoint);
-        const part2 = msg.slice(midpoint + 2);
-        await this.post({ content: part1 });
+        await this.postSafe(msg2);
         await this.wait();
-        await this.post({ content: part2 });
+      }
+
+      // ── MESSAGE 3: GPU NEWS ───────────────────────────
+      if (opts.news.length > 0) {
+        let msg3 = `**📰 Top GPU News Today**\n\n`;
+        for (const n of opts.news.slice(0, 6)) {
+          const time = n.time ? ` · _${n.time}_` : '';
+          msg3 += `▸ [**${n.headline}**](${n.link})\n`;
+          msg3 += `  ${n.source}${time}\n\n`;
+        }
+        msg3 += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        msg3 += `_${opts.news.length} headlines · Synced to Google Sheet_`;
+
+        await this.postSafe(msg3);
       }
 
       return 'sent';
     } catch (err) {
-      console.error('Discord news error:', err);
+      console.error('Discord intel drop error:', err);
       return 'error';
     }
   }
 
   /**
-   * Heartbeat — when no news found.
+   * Heartbeat — when nothing notable found.
    */
   async sendHeartbeat() {
     if (!this.webhookUrl) return 'skipped';
     const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     try {
       await this.post({
-        content: `\`${timeStr}\` · No GPU news found this cycle. Will retry next run.`,
+        content: `\`${timeStr}\` · Scan complete. No notable GPU deals or news this cycle.`,
       });
       return 'sent';
     } catch { return 'error'; }
+  }
+
+  /**
+   * Post message, splitting if over 2000 chars.
+   */
+  private async postSafe(content: string) {
+    if (content.length <= 2000) {
+      await this.post({ content });
+    } else {
+      const midpoint = content.lastIndexOf('\n\n', 1800);
+      const part1 = content.slice(0, midpoint > 0 ? midpoint : 1800);
+      const part2 = content.slice(midpoint > 0 ? midpoint + 2 : 1800);
+      await this.post({ content: part1 });
+      await this.wait();
+      if (part2.trim()) await this.post({ content: part2 });
+    }
   }
 
   private async post(payload: Record<string, unknown>) {

@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { scrapeNews } from '@/lib/news-scraper';
+import { scanForGpuDeals } from '@/lib/gpu-scraper';
+import { findGpuCompanies } from '@/lib/lead-finder';
 import { DiscordWebhook } from '@/lib/discord';
+import { generateIntel, getActionItem } from '@/lib/intel';
+import { syncMarketIntel, syncLeads } from '@/lib/sheets';
 import { getDiscordEnabled } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
@@ -15,45 +19,70 @@ export async function GET(request: Request) {
 
   const startTime = Date.now();
 
-  // Check if Discord alerts are enabled
+  // Check if Discord is paused
   let discordPaused = false;
   try {
     const enabled = await getDiscordEnabled();
     if (!enabled) discordPaused = true;
-  } catch {
-    // If settings check fails, default to sending
-  }
+  } catch { /* default to sending */ }
 
   if (discordPaused) {
-    return NextResponse.json({
-      success: true,
-      newsCount: 0,
-      discordStatus: 'paused',
-      elapsed: '0s',
-    });
+    return NextResponse.json({ success: true, discordStatus: 'paused', elapsed: '0s' });
   }
 
   const discord = new DiscordWebhook();
-
   if (!discord.isConfigured()) {
     return NextResponse.json({ success: false, error: 'DISCORD_WEBHOOK_URL not set' }, { status: 500 });
   }
 
   try {
-    const newsItems = await scrapeNews();
+    // Run all scrapers in parallel
+    const [dealResults, leads, newsItems] = await Promise.all([
+      scanForGpuDeals(),
+      findGpuCompanies(),
+      scrapeNews(),
+    ]);
 
+    const { listings, totalScanned } = dealResults;
+
+    // Generate intelligence analysis
+    const intel = generateIntel({ listings, leads, news: newsItems });
+    const actionItem = getActionItem(listings, leads);
+
+    // Post to Discord
     let discordStatus: string;
-    if (newsItems.length > 0) {
-      discordStatus = await discord.sendDailyNews(newsItems);
+    if (listings.length > 0 || newsItems.length > 0 || leads.length > 0) {
+      discordStatus = await discord.sendIntelDrop({
+        listings,
+        leads,
+        intel,
+        news: newsItems,
+        actionItem,
+        totalScanned,
+      });
     } else {
       discordStatus = await discord.sendHeartbeat();
+    }
+
+    // Sync to Google Sheet (non-blocking)
+    try {
+      await Promise.all([
+        syncMarketIntel(intel, listings),
+        syncLeads(leads),
+      ]);
+    } catch (err) {
+      console.error('[Sheets] Sync error:', (err as Error).message);
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
     return NextResponse.json({
       success: true,
+      listings: listings.length,
+      leads: leads.length,
       newsCount: newsItems.length,
+      intelItems: intel.length,
+      scanned: totalScanned,
       discordStatus,
       elapsed: `${elapsed}s`,
     });
