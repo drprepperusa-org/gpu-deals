@@ -86,7 +86,7 @@ export class DiscordWebhook {
           msg2 += `${priority} **${lead.company}** (${lead.type})\n`;
           msg2 += `• ${lead.description.slice(0, 100)}\n`;
           msg2 += `• GPUs: ${lead.gpuModels} · ${lead.location}\n`;
-          msg2 += `• https://${lead.website}\n\n`;
+          msg2 += `• ${lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}\n\n`;
         }
         msg2 += `_${opts.leads.length} total leads tracked. Prioritize ITAD/Liquidator contacts._`;
 

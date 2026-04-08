@@ -370,7 +370,7 @@ export default function Dashboard() {
                   </div>
                   <div className="space-y-2">
                     {leads.map((l, i) => (
-                      <a key={i} href={`https://${l.website}`} target="_blank" rel="noreferrer"
+                      <a key={i} href={l.website.startsWith('http') ? l.website : `https://${l.website}`} target="_blank" rel="noreferrer"
                         className="panel rounded-xl px-4 sm:px-5 py-3 sm:py-4 hover:border-dark-border2 transition-all group block fade-in"
                         style={{ animationDelay: `${i * 60}ms` }}>
                         <div className="flex items-center gap-2 mb-1">
