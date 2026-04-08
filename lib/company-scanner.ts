@@ -191,13 +191,16 @@ async function searchGovernmentContracts(): Promise<CompanyLead[]> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         filters: {
-          keywords: ['GPU', 'NVIDIA', 'graphics processing unit', 'RTX'],
-          time_period: [{ start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), end_date: new Date().toISOString().slice(0, 10) }],
+          keywords: ['GPU NVIDIA'],
+          time_period: [{ start_date: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), end_date: new Date().toISOString().slice(0, 10) }],
+          award_type_codes: ['A', 'B', 'C', 'D'],
         },
-        fields: ['Award ID', 'Recipient Name', 'Description', 'Award Amount', 'Awarding Agency', 'recipient_id'],
+        fields: ['Award ID', 'Recipient Name', 'Description', 'Award Amount', 'Awarding Agency'],
         limit: 25,
         order: 'desc',
         sort: 'Award Amount',
+        subawards: false,
+        page: 1,
       }),
     });
 
@@ -297,6 +300,12 @@ async function searchGoogleNews(): Promise<CompanyLead[]> {
     'ITAD GPU inventory wholesale',
     'enterprise GPU wholesale supplier',
     'bulk GPU supplier company USA',
+    'GPU wholesale distributor',
+    'NVIDIA RTX bulk sale company',
+    'server GPU decommission sale company',
+    'GPU reseller wholesale bulk',
+    'datacenter hardware liquidation GPU',
+    'IT asset recovery GPU company',
   ];
 
   const now = Date.now();
@@ -304,7 +313,7 @@ async function searchGoogleNews(): Promise<CompanyLead[]> {
     .map((q, i) => ({ q, sort: Math.sin(now / 1000 + i * 37.1) }))
     .sort((a, b) => a.sort - b.sort)
     .map(x => x.q)
-    .slice(0, 3);
+    .slice(0, 6);
 
   for (const query of picked) {
     try {
