@@ -4,16 +4,14 @@
  */
 
 import type { GpuListing, CompanyLead, MarketIntel } from './types';
-import type { NewsItem } from './news-scraper';
 
 export function generateIntel(opts: {
   listings: GpuListing[];
   leads: CompanyLead[];
-  news: NewsItem[];
 }): MarketIntel[] {
   const intel: MarketIntel[] = [];
   const now = new Date().toISOString();
-  const { listings, leads, news } = opts;
+  const { listings, leads } = opts;
 
   // Best deal found
   if (listings.length > 0) {
@@ -80,18 +78,6 @@ export function generateIntel(opts: {
     });
   }
 
-  // News signals
-  const priceNews = news.filter(n => {
-    const h = n.headline.toLowerCase();
-    return h.includes('price') || h.includes('drop') || h.includes('shortage') || h.includes('supply');
-  });
-  if (priceNews.length > 0) {
-    intel.push({
-      timestamp: now,
-      finding: `${priceNews.length} price/supply headlines today. Key: "${priceNews[0].headline.slice(0, 80)}"`,
-      sourceLink: priceNews[0].link,
-    });
-  }
 
   return intel;
 }

@@ -44,7 +44,7 @@ export async function GET(request: Request) {
     const { listings, totalScanned, sources } = dealResults;
 
     // Generate intelligence analysis
-    const intel = generateIntel({ listings, leads, news: [] });
+    const intel = generateIntel({ listings, leads });
     const actionItem = getActionItem(listings, leads);
 
     // Post to Discord

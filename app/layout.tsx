@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OpenClaw — GPU Scanner",
+  title: "GPU Deals",
   description: "Multi-product GPU deal scanner by OpenClaw",
 };
 
