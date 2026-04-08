@@ -311,8 +311,8 @@ export default function Dashboard() {
                       <Cpu className="w-5 h-5 text-accent" />
                     </div>
                     <div>
-                      <div className="text-xs text-zinc-300 font-medium">Scans run automatically from your local machine</div>
-                      <div className="text-[10px] text-zinc-600 mt-0.5">Scheduled daily at 12:00 PM · Results posted to Discord + Google Sheets</div>
+                      <div className="text-xs text-zinc-300 font-medium">Scans run automatically every 12 hours</div>
+                      <div className="text-[10px] text-zinc-600 mt-0.5">Scheduled every 12h via AWS · Results posted to Discord + Google Sheets</div>
                     </div>
                   </div>
                 </div>
@@ -410,7 +410,7 @@ export default function Dashboard() {
                   </div>
                   {isLocal
                     ? <p className="text-xs text-zinc-600">Hit <span className="text-accent font-semibold">Scan</span> to start searching</p>
-                    : <p className="text-xs text-zinc-600">Scans run automatically from your local machine at noon daily</p>
+                    : <p className="text-xs text-zinc-600">Scans run automatically every 12 hours via AWS EC2</p>
                   }
                 </div>
               )}
