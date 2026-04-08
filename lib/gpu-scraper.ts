@@ -215,20 +215,91 @@ async function scrapeReddit(timeParam: string): Promise<GpuListing[]> {
   return listings;
 }
 
-// ─── eBay RSS Feeds ──────────────────────────────────────
+// ─── Best Buy API ────────────────────────────────────────
 
-async function scrapeEbayRSS(): Promise<GpuListing[]> {
+async function scrapeBestBuy(): Promise<GpuListing[]> {
+  const apiKey = process.env.BESTBUY_API_KEY;
   const listings: GpuListing[] = [];
-  const queries = [
-    'GPU+lot+bulk+NVIDIA', 'RTX+4090+lot', 'RTX+5090',
-    'datacenter+GPU+liquidation', 'NVIDIA+A100', 'NVIDIA+H100',
-    'server+GPU+lot', 'GPU+wholesale', 'RTX+3090+lot',
+
+  // Works without API key via RSS, or with key via API
+  if (apiKey) {
+    try {
+      const url = `https://api.bestbuy.com/v1/products((categoryPath.id=abcat0507002)&onSale=true)?apiKey=${apiKey}&sort=onSale.desc&show=sku,name,salePrice,regularPrice,url,condition,manufacturer&pageSize=50&format=json`;
+      const res = await fetch(url);
+      if (!res.ok) { console.error(`[Best Buy] API ${res.status}`); return []; }
+      const data = await res.json();
+
+      for (const item of data.products || []) {
+        const title = item.name || '';
+        if (!hardFilter(title)) continue;
+
+        const gpuModel = detectGPUModel(title) || 'GPU';
+        const price = item.salePrice || item.regularPrice || 0;
+        const savings = (item.regularPrice || 0) - (item.salePrice || 0);
+
+        const listing: GpuListing = {
+          title: `${title}${savings > 0 ? ` (Save $${savings})` : ''}`.slice(0, 150),
+          price, pricePerUnit: price, quantity: 1,
+          gpuModel, condition: item.condition || 'New', seller: 'Best Buy',
+          link: item.url || '', source: 'bestbuy', foundAt: new Date().toISOString(), score: 0,
+        };
+        listing.score = scoreListing(listing) + (savings > 50 ? 20 : 0);
+        listings.push(listing);
+      }
+    } catch (err) {
+      console.error(`[Best Buy] Error:`, (err as Error).message);
+    }
+  } else {
+    // Fallback: Best Buy deals RSS
+    try {
+      const url = 'https://www.bestbuy.com/rss/deals/category/abcat0507002';
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
+      });
+      if (!res.ok) return [];
+      const xml = await res.text();
+
+      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+      let match;
+      while ((match = itemRegex.exec(xml)) !== null && listings.length < 20) {
+        const block = match[1];
+        const title = decodeEntities(extractTag(block, 'title'));
+        const link = extractTag(block, 'link');
+        if (!title || !hardFilter(title)) continue;
+
+        const gpuModel = detectGPUModel(title) || 'GPU';
+        const priceMatch = title.match(/\$([0-9,]+\.?\d*)/);
+        const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
+
+        const listing: GpuListing = {
+          title: title.slice(0, 150), price, pricePerUnit: price, quantity: 1,
+          gpuModel, condition: 'New', seller: 'Best Buy',
+          link, source: 'bestbuy', foundAt: new Date().toISOString(), score: 0,
+        };
+        listing.score = scoreListing(listing);
+        listings.push(listing);
+      }
+    } catch (err) {
+      console.error(`[Best Buy RSS] Error:`, (err as Error).message);
+    }
+  }
+
+  console.log(`[Best Buy] Found ${listings.length} GPU listings`);
+  return listings;
+}
+
+// ─── Newegg RSS ──────────────────────────────────────────
+
+async function scrapeNewegg(): Promise<GpuListing[]> {
+  const listings: GpuListing[] = [];
+  const feeds = [
+    'https://www.newegg.com/product/rss?N=100007709&IsNodeId=1&name=Desktop-Graphics-Cards',
+    'https://www.newegg.com/product/rss?N=100007709%204814&IsNodeId=1&name=NVIDIA-Desktop-Graphics-Cards',
   ];
 
-  for (const query of queries) {
+  for (const feedUrl of feeds) {
     try {
-      const url = `https://www.ebay.com/sch/i.html?_nkw=${query}&_rss=1&_sop=10&LH_BIN=1`;
-      const res = await fetch(url, {
+      const res = await fetch(feedUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
       });
       if (!res.ok) continue;
@@ -236,35 +307,119 @@ async function scrapeEbayRSS(): Promise<GpuListing[]> {
 
       const itemRegex = /<item>([\s\S]*?)<\/item>/g;
       let match;
-      while ((match = itemRegex.exec(xml)) !== null) {
+      while ((match = itemRegex.exec(xml)) !== null && listings.length < 30) {
         const block = match[1];
         const title = decodeEntities(extractTag(block, 'title'));
         const link = extractTag(block, 'link');
+        const desc = extractTag(block, 'description');
 
-        if (!title || title.length < 10) continue;
-        if (!hardFilter(title)) continue;
+        if (!title || !hardFilter(title)) continue;
 
         const gpuModel = detectGPUModel(title) || 'GPU';
-        const desc = extractTag(block, 'description');
-        const priceMatch = desc.match(/\$([0-9,]+\.?\d*)/);
+        const priceMatch = (title + ' ' + desc).match(/\$([0-9,]+\.?\d*)/);
         const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
-        const quantity = detectQuantity(title);
 
         const listing: GpuListing = {
-          title: title.slice(0, 150),
-          price, pricePerUnit: quantity > 1 && price > 0 ? Math.round(price / quantity) : price,
-          quantity, gpuModel, condition: 'Used', seller: 'eBay',
-          link: link || '', source: 'ebay', foundAt: new Date().toISOString(), score: 0,
+          title: title.slice(0, 150), price, pricePerUnit: price, quantity: 1,
+          gpuModel, condition: 'New', seller: 'Newegg',
+          link: link || '', source: 'newegg', foundAt: new Date().toISOString(), score: 0,
         };
         listing.score = scoreListing(listing);
         listings.push(listing);
       }
     } catch (err) {
-      console.error(`[eBay RSS] Error:`, (err as Error).message);
+      console.error(`[Newegg] Error:`, (err as Error).message);
     }
   }
 
-  console.log(`[eBay RSS] Found ${listings.length} GPU listings`);
+  console.log(`[Newegg] Found ${listings.length} GPU listings`);
+  return listings;
+}
+
+// ─── PCPartPicker RSS ────────────────────────────────────
+
+async function scrapePCPartPicker(): Promise<GpuListing[]> {
+  const listings: GpuListing[] = [];
+
+  try {
+    const url = 'https://pcpartpicker.com/products/video-card/overall-list/';
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+
+    // Parse product rows
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
+    let match;
+    while ((match = rowRegex.exec(html)) !== null && listings.length < 30) {
+      const row = match[1];
+      const nameMatch = row.match(/<a[^>]*href="(\/product\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+      if (!nameMatch) continue;
+
+      const link = `https://pcpartpicker.com${nameMatch[1]}`;
+      const title = nameMatch[2].replace(/<[^>]+>/g, '').trim();
+      if (!title || !hardFilter(title)) continue;
+
+      const gpuModel = detectGPUModel(title) || 'GPU';
+      const priceMatch = row.match(/\$([0-9,]+\.?\d*)/);
+      const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
+
+      const listing: GpuListing = {
+        title: title.slice(0, 150), price, pricePerUnit: price, quantity: 1,
+        gpuModel, condition: 'New', seller: 'PCPartPicker',
+        link, source: 'pcpartpicker', foundAt: new Date().toISOString(), score: 0,
+      };
+      listing.score = scoreListing(listing);
+      listings.push(listing);
+    }
+  } catch (err) {
+    console.error(`[PCPartPicker] Error:`, (err as Error).message);
+  }
+
+  console.log(`[PCPartPicker] Found ${listings.length} GPU listings`);
+  return listings;
+}
+
+// ─── Slickdeals RSS (GPU deals) ──────────────────────────
+
+async function scrapeSlickdeals(): Promise<GpuListing[]> {
+  const listings: GpuListing[] = [];
+
+  try {
+    const url = 'https://feeds.feedburner.com/SlickdealsnetFP?format=xml';
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
+    });
+    if (!res.ok) return [];
+    const xml = await res.text();
+
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+    while ((match = itemRegex.exec(xml)) !== null && listings.length < 15) {
+      const block = match[1];
+      const title = decodeEntities(extractTag(block, 'title'));
+      const link = extractTag(block, 'link');
+
+      if (!title || !hardFilter(title)) continue;
+
+      const gpuModel = detectGPUModel(title) || 'GPU';
+      const priceMatch = title.match(/\$([0-9,]+\.?\d*)/);
+      const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
+
+      const listing: GpuListing = {
+        title: title.slice(0, 150), price, pricePerUnit: price, quantity: 1,
+        gpuModel, condition: 'Deal', seller: 'Slickdeals',
+        link: link || '', source: 'slickdeals', foundAt: new Date().toISOString(), score: 0,
+      };
+      listing.score = scoreListing(listing) + 15; // Bonus for being a confirmed deal
+      listings.push(listing);
+    }
+  } catch (err) {
+    console.error(`[Slickdeals] Error:`, (err as Error).message);
+  }
+
+  console.log(`[Slickdeals] Found ${listings.length} GPU deals`);
   return listings;
 }
 
@@ -541,9 +696,12 @@ export async function scanForGpuDeals(range: string = 'today'): Promise<{
   const newsDays = range === 'week' ? '7d' : range === '3d' ? '3d' : '1d';
 
   // Run ALL sources in parallel
-  const [reddit, ebay, google, swappa, bidspotter, hibid, govdeals, craigslist] = await Promise.all([
+  const [reddit, bestbuy, newegg, pcpartpicker, slickdeals, google, swappa, bidspotter, hibid, govdeals, craigslist] = await Promise.all([
     scrapeReddit(redditTime),
-    scrapeEbayRSS(),
+    scrapeBestBuy(),
+    scrapeNewegg(),
+    scrapePCPartPicker(),
+    scrapeSlickdeals(),
     scrapeGoogleGpuDeals(newsDays),
     scrapeSwappa(),
     scrapeBidSpotter(),
@@ -554,7 +712,10 @@ export async function scanForGpuDeals(range: string = 'today'): Promise<{
 
   const sources: Record<string, number> = {
     reddit: reddit.length,
-    ebay: ebay.length,
+    bestbuy: bestbuy.length,
+    newegg: newegg.length,
+    pcpartpicker: pcpartpicker.length,
+    slickdeals: slickdeals.length,
     google: google.length,
     swappa: swappa.length,
     bidspotter: bidspotter.length,
@@ -563,7 +724,7 @@ export async function scanForGpuDeals(range: string = 'today'): Promise<{
     craigslist: craigslist.length,
   };
 
-  const allListings = [...reddit, ...ebay, ...google, ...swappa, ...bidspotter, ...hibid, ...govdeals, ...craigslist];
+  const allListings = [...reddit, ...bestbuy, ...newegg, ...pcpartpicker, ...slickdeals, ...google, ...swappa, ...bidspotter, ...hibid, ...govdeals, ...craigslist];
   const totalScanned = allListings.length;
 
   console.log(`[GPU] Total: ${totalScanned} | Sources: ${Object.entries(sources).map(([k, v]) => `${k}=${v}`).join(', ')}`);

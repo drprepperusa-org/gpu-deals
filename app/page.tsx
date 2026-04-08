@@ -300,7 +300,7 @@ export default function Dashboard() {
                     </select>
                     <div className="flex-1 min-w-0">
                       <div className="text-xs text-zinc-300 font-medium">{loaded ? `${listings.length} deals found` : 'Ready to scan'}</div>
-                      <div className="text-[10px] text-zinc-600 mt-0.5">Reddit · eBay · Google · Swappa · BidSpotter · HiBid · GovDeals · Craigslist</div>
+                      <div className="text-[10px] text-zinc-600 mt-0.5">Reddit · Best Buy · Newegg · Slickdeals · Google · Swappa · GovDeals · Craigslist</div>
                     </div>
                   </div>
                 </div>
