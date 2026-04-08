@@ -269,7 +269,7 @@ async function searchSECFilings(): Promise<CompanyLead[]> {
 
       leads.push({
         company: company.slice(0, 60),
-        website: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(company)}&type=&dateb=&owner=include&count=10`,
+        website: `https://www.google.com/search?q=${encodeURIComponent(company + ' GPU site:sec.gov')}`,
         type: 'SEC Filing',
         description: `SEC filing mentioning GPU/NVIDIA liquidation: ${description.slice(0, 150)}`,
         location: 'USA',
