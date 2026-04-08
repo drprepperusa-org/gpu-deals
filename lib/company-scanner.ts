@@ -12,6 +12,18 @@ const REJECT_TERMS = [
   'laptop', 'notebook', 'macbook', 'chromebook', 'ultrabook',
   'desktop computer', 'complete system', 'complete pc', 'gaming pc',
   'workstation pc', 'all-in-one', 'mini pc', 'nuc',
+  // Laptop model patterns (CPU + GPU combos = laptop)
+  'i5 12', 'i7 12', 'i9 12', 'i5 13', 'i7 13', 'i9 13', 'i5 14', 'i7 14', 'i9 14',
+  'i5-12', 'i7-12', 'i9-12', 'i5-13', 'i7-13', 'i9-13', 'i5-14', 'i7-14', 'i9-14',
+  '12450h', '12500h', '12700h', '12900h', '13450h', '13500h', '13620h', '13700h', '13900h',
+  '14500h', '14700h', '14900h', '12650h', '13650h', '14650h',
+  'under warranty', 'warranty until',
+  // Laptop brands/models
+  'thinkpad', 'lenovo legion', 'dell g15', 'dell g16', 'asus rog', 'msi stealth',
+  'msi raider', 'acer nitro', 'acer predator', 'hp omen', 'hp victus',
+  'alienware m', 'razer blade', 'colorful evol', 'gigabyte aero', 'gigabyte g5',
+  'asus tuf', 'asus zephyrus', 'msi pulse', 'msi katana', 'msi cyborg',
+  'rtx 4050', 'rtx 4060 laptop', 'rtx 3050', 'rtx 3060 laptop',
   'cpu', 'processor', 'xeon', 'ryzen', 'threadripper', 'core i7', 'core i9', 'core i5', 'epyc',
   'motherboard', 'mainboard', 'mobo',
   'ram only', 'memory only', 'ddr4', 'ddr5',
