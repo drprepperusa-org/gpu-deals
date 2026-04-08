@@ -1,56 +1,52 @@
 /**
- * Sync findings to Google Sheets.
- * Uses OAuth2 refresh token to get access token, then appends rows.
+ * Sync findings to Google Sheets using Service Account.
+ * Uses JWT to authenticate — no OAuth flow needed, never expires.
  */
 
+import { SignJWT, importPKCS8 } from 'jose';
 import type { GpuListing, CompanyLead, MarketIntel } from './types';
 
 const SHEET_ID = process.env.SHEET_ID || '1PLfPtwdTtCoJCd7gRskIWSl8dhVKs71YcHlLxuPT29Y';
-
-interface GoogleToken {
-  access_token: string;
-  refresh_token: string;
-  expiry_date: number;
-}
-
-interface GoogleCredentials {
-  installed: {
-    client_id: string;
-    client_secret: string;
-    token_uri: string;
-  };
-}
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
 
 async function getAccessToken(): Promise<string> {
-  const credsRaw = process.env.GOOGLE_CREDENTIALS;
-  const tokenRaw = process.env.GOOGLE_TOKEN;
+  const email = process.env.GOOGLE_SERVICE_EMAIL;
+  const privateKeyRaw = process.env.GOOGLE_PRIVATE_KEY;
 
-  if (!credsRaw || !tokenRaw) {
-    throw new Error('GOOGLE_CREDENTIALS and GOOGLE_TOKEN required for Sheets sync');
+  if (!email || !privateKeyRaw) {
+    throw new Error('GOOGLE_SERVICE_EMAIL and GOOGLE_PRIVATE_KEY required for Sheets sync');
   }
 
-  const creds: GoogleCredentials = JSON.parse(credsRaw);
-  const token: GoogleToken = JSON.parse(tokenRaw);
+  // Parse the private key (handle escaped newlines from env)
+  const privateKey = privateKeyRaw.replace(/\\n/g, '\n');
 
-  // If token is still valid, use it
-  if (token.expiry_date && token.expiry_date > Date.now() + 60000) {
-    return token.access_token;
-  }
+  const now = Math.floor(Date.now() / 1000);
 
-  // Refresh the token
-  const res = await fetch(creds.installed.token_uri, {
+  // Create JWT
+  const key = await importPKCS8(privateKey, 'RS256');
+  const jwt = await new SignJWT({
+    iss: email,
+    scope: SCOPES,
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  })
+    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+    .sign(key);
+
+  // Exchange JWT for access token
+  const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: creds.installed.client_id,
-      client_secret: creds.installed.client_secret,
-      refresh_token: token.refresh_token,
-      grant_type: 'refresh_token',
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
     }),
   });
 
   if (!res.ok) {
-    throw new Error(`Token refresh failed: ${res.status}`);
+    const err = await res.text();
+    throw new Error(`Token exchange failed: ${res.status} — ${err}`);
   }
 
   const data = await res.json();
@@ -75,36 +71,40 @@ async function appendToSheet(range: string, values: string[][]) {
   if (!res.ok) {
     const err = await res.text();
     console.error(`[Sheets] Append error for ${range}:`, err);
+    throw new Error(`Sheets append failed: ${res.status}`);
   }
+
+  console.log(`[Sheets] Appended ${values.length} rows to ${range}`);
 }
 
 /**
  * Sync market intel findings to MARKET_INTEL tab.
  */
 export async function syncMarketIntel(intel: MarketIntel[], listings: GpuListing[]) {
-  if (!process.env.GOOGLE_CREDENTIALS || !process.env.GOOGLE_TOKEN) {
+  if (!process.env.GOOGLE_SERVICE_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
     console.log('[Sheets] Skipping — no Google credentials');
     return;
   }
 
   try {
-    // Market intel rows
-    if (intel.length > 0) {
-      const rows = intel.map(i => [i.timestamp, i.finding, i.sourceLink]);
-      await appendToSheet('MARKET_INTEL!A:C', rows);
-      console.log(`[Sheets] Synced ${rows.length} market intel rows`);
+    const rows: string[][] = [];
+
+    // Intel rows
+    for (const i of intel) {
+      rows.push([i.timestamp, i.finding, i.sourceLink]);
     }
 
     // Top listings as intel
-    if (listings.length > 0) {
-      const topListings = listings.slice(0, 5);
-      const rows = topListings.map(l => [
+    for (const l of listings.slice(0, 5)) {
+      rows.push([
         new Date().toISOString(),
-        `${l.gpuModel} — $${l.pricePerUnit}/unit × ${l.quantity} (${l.condition}) from ${l.source}`,
+        `${l.gpuModel} — $${l.pricePerUnit}/unit × ${l.quantity} (${l.condition}) from ${l.source} — ${l.seller}`,
         l.link,
       ]);
+    }
+
+    if (rows.length > 0) {
       await appendToSheet('MARKET_INTEL!A:C', rows);
-      console.log(`[Sheets] Synced ${rows.length} listing intel rows`);
     }
   } catch (err) {
     console.error('[Sheets] Market intel sync error:', (err as Error).message);
@@ -115,7 +115,7 @@ export async function syncMarketIntel(intel: MarketIntel[], listings: GpuListing
  * Sync company leads to LEADS_TRACKER tab.
  */
 export async function syncLeads(leads: CompanyLead[]) {
-  if (!process.env.GOOGLE_CREDENTIALS || !process.env.GOOGLE_TOKEN) {
+  if (!process.env.GOOGLE_SERVICE_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
     console.log('[Sheets] Skipping — no Google credentials');
     return;
   }
@@ -125,12 +125,12 @@ export async function syncLeads(leads: CompanyLead[]) {
   try {
     const rows = leads.map(l => [
       l.company,
-      '', // Contact person — unknown from scraping
-      '', // Email — unknown
-      '', // Phone — unknown
+      '', // Contact
+      '', // Email
+      '', // Phone
       l.location,
       l.gpuModels,
-      '', // Inventory estimate
+      '', // Inventory
       l.priority,
       `${l.type} — ${l.description.slice(0, 100)}`,
       l.website,
@@ -138,7 +138,6 @@ export async function syncLeads(leads: CompanyLead[]) {
     ]);
 
     await appendToSheet('LEADS_TRACKER!A:K', rows);
-    console.log(`[Sheets] Synced ${rows.length} leads`);
   } catch (err) {
     console.error('[Sheets] Leads sync error:', (err as Error).message);
   }
