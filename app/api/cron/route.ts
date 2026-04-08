@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       scrapeNews(),
     ]);
 
-    const { listings, totalScanned } = dealResults;
+    const { listings, totalScanned, sources } = dealResults;
 
     // Generate intelligence analysis
     const intel = generateIntel({ listings, leads, news: newsItems });
@@ -83,6 +83,7 @@ export async function GET(request: Request) {
       newsCount: newsItems.length,
       intelItems: intel.length,
       scanned: totalScanned,
+      sources,
       discordStatus,
       elapsed: `${elapsed}s`,
     });
