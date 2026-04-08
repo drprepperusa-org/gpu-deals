@@ -1,7 +1,7 @@
 /**
- * Multi-source GPU deal scraper.
- * Sources: eBay API, eBay RSS, Reddit RSS, GSA Auctions, Craigslist.
- * All fetch-based — no Puppeteer, works on Vercel.
+ * Multi-source GPU bulk lot & company finder.
+ * Finds companies selling GPUs on auction/liquidation platforms.
+ * All fetch-based — works on Vercel serverless.
  */
 
 import type { GpuListing } from './types';
@@ -39,17 +39,6 @@ function detectQuantity(title: string): number {
   return 1;
 }
 
-const EXCLUDE_KEYWORDS = [
-  'broken', 'for parts', 'untested', 'as-is', 'not working', 'damaged',
-  'empty box', 'box only', 'mining rig frame', 'case only', 'fan only',
-  'heatsink only', 'bracket only', 'backplate only',
-];
-
-function isExcluded(title: string): boolean {
-  const lower = title.toLowerCase();
-  return EXCLUDE_KEYWORDS.some(kw => lower.includes(kw));
-}
-
 function scoreListing(l: GpuListing): number {
   let score = 0;
   const t = l.title.toLowerCase();
@@ -60,199 +49,189 @@ function scoreListing(l: GpuListing): number {
   if (t.includes('enterprise')) score += 30;
   if (t.includes('surplus')) score += 25;
   if (t.includes('lot') || t.includes('bulk')) score += 20;
+  if (t.includes('auction')) score += 15;
   if (l.quantity > 1) score += l.quantity * 5;
   if (l.quantity >= 10) score += 50;
   if (l.gpuModel.includes('H100')) score += 40;
   if (l.gpuModel.includes('A100')) score += 35;
   if (l.gpuModel.includes('4090') || l.gpuModel.includes('5090')) score += 25;
-  if (l.gpuModel.includes('A6000')) score += 20;
   if (l.pricePerUnit > 0 && l.pricePerUnit < 500) score += 30;
   else if (l.pricePerUnit > 0 && l.pricePerUnit < 1000) score += 15;
   return score;
 }
 
-// ─── eBay API ────────────────────────────────────────────
+// ─── BidSpotter (Industrial Auctions) ────────────────────
 
-const EBAY_QUERIES = [
-  'GPU lot bulk NVIDIA',
-  'RTX 4090 lot',
-  'RTX 5090',
-  'NVIDIA A100',
-  'NVIDIA H100',
-  'datacenter GPU decommission',
-  'server GPU liquidation lot',
-  'RTX 3090 lot bulk',
-  'GPU wholesale lot',
-  'enterprise GPU surplus',
-];
+async function scrapeBidSpotter(): Promise<GpuListing[]> {
+  const listings: GpuListing[] = [];
+  const queries = ['NVIDIA GPU', 'RTX 4090', 'GPU lot', 'server GPU'];
 
-async function getEbayToken(): Promise<string | null> {
-  const clientId = process.env.EBAY_CLIENT_ID;
-  const clientSecret = process.env.EBAY_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
+  for (const query of queries) {
+    try {
+      const url = `https://www.bidspotter.com/en-us/search?query=${encodeURIComponent(query)}`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+
+      // Parse auction lots
+      const lotRegex = /<a[^>]*href="(\/en-us\/auction-catalogues\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+      let match;
+      while ((match = lotRegex.exec(html)) !== null && listings.length < 20) {
+        const link = `https://www.bidspotter.com${match[1]}`;
+        const text = match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const gpuModel = detectGPUModel(text);
+        if (!gpuModel || text.length < 10) continue;
+
+        const priceMatch = text.match(/\$([0-9,]+)/);
+        const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
+        const quantity = detectQuantity(text);
+
+        const listing: GpuListing = {
+          title: text.slice(0, 120),
+          price, pricePerUnit: quantity > 1 && price > 0 ? Math.round(price / quantity) : price,
+          quantity, gpuModel, condition: 'Auction', seller: 'BidSpotter',
+          link, source: 'bidspotter', foundAt: new Date().toISOString(), score: 0,
+        };
+        listing.score = scoreListing(listing);
+        listings.push(listing);
+      }
+    } catch (err) {
+      console.error(`[BidSpotter] Error:`, (err as Error).message);
+    }
+  }
+
+  return listings;
+}
+
+// ─── Liquidation.com ─────────────────────────────────────
+
+async function scrapeLiquidation(): Promise<GpuListing[]> {
+  const listings: GpuListing[] = [];
 
   try {
-    const res = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + btoa(`${clientId}:${clientSecret}`),
-      },
-      body: 'grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope',
+    const url = 'https://www.liquidation.com/aucpages/searchauctions.cfm?keyword=GPU+NVIDIA&category=0';
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
     });
+    if (!res.ok) return [];
+    const html = await res.text();
 
-    if (!res.ok) {
-      console.error(`[eBay API] Token error: ${res.status}`);
-      return null;
+    // Parse auction cards
+    const cardRegex = /<a[^>]*href="(\/aucpages\/[^"]*)"[^>]*>[\s\S]*?<\/a>/g;
+    let match;
+    while ((match = cardRegex.exec(html)) !== null && listings.length < 15) {
+      const link = `https://www.liquidation.com${match[1]}`;
+      const text = match[0].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const gpuModel = detectGPUModel(text);
+      if (!gpuModel) continue;
+
+      const priceMatch = text.match(/\$([0-9,]+)/);
+      const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
+      const quantity = detectQuantity(text);
+
+      const listing: GpuListing = {
+        title: text.slice(0, 120),
+        price, pricePerUnit: quantity > 1 && price > 0 ? Math.round(price / quantity) : price,
+        quantity, gpuModel, condition: 'Liquidation', seller: 'Liquidation.com',
+        link, source: 'liquidation', foundAt: new Date().toISOString(), score: 0,
+      };
+      listing.score = scoreListing(listing) + 20;
+      listings.push(listing);
     }
-
-    const data = await res.json();
-    return data.access_token;
   } catch (err) {
-    console.error('[eBay API] Token error:', (err as Error).message);
-    return null;
-  }
-}
-
-async function scrapeEbayAPI(): Promise<GpuListing[]> {
-  const token = await getEbayToken();
-  if (!token) {
-    console.log('[eBay API] No credentials — skipping');
-    return [];
-  }
-
-  const listings: GpuListing[] = [];
-
-  // Pick 4 queries per run
-  const now = Date.now();
-  const queries = EBAY_QUERIES
-    .map((q, i) => ({ q, sort: Math.sin(now / 1000 + i * 137.5) }))
-    .sort((a, b) => a.sort - b.sort)
-    .map(x => x.q)
-    .slice(0, 4);
-
-  for (const query of queries) {
-    try {
-      const params = new URLSearchParams({
-        q: query,
-        limit: '50',
-        filter: 'buyingOptions:{FIXED_PRICE},price:[10..50000],priceCurrency:USD',
-        sort: 'newlyListed',
-      });
-
-      const res = await fetch(`https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}`, 'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US' },
-      });
-
-      if (!res.ok) {
-        console.error(`[eBay API] Search error ${res.status} for "${query}"`);
-        continue;
-      }
-
-      const data = await res.json();
-      const items = data.itemSummaries || [];
-
-      for (const item of items) {
-        const title = item.title || '';
-        const price = parseFloat(item.price?.value || '0');
-        const link = item.itemWebUrl || '';
-        const condition = item.condition || 'Used';
-        const seller = item.seller?.username || 'Unknown';
-
-        if (!title || price < 10 || price > 50000 || isExcluded(title)) continue;
-
-        const gpuModel = detectGPUModel(title);
-        if (!gpuModel) continue;
-
-        const quantity = detectQuantity(title);
-
-        const listing: GpuListing = {
-          title,
-          price,
-          pricePerUnit: quantity > 1 ? Math.round(price / quantity) : price,
-          quantity,
-          gpuModel,
-          condition,
-          seller,
-          link,
-          source: 'ebay',
-          foundAt: new Date().toISOString(),
-          score: 0,
-        };
-        listing.score = scoreListing(listing);
-        listings.push(listing);
-      }
-
-      console.log(`[eBay API] "${query}" → ${items.length} items, ${listings.length} GPU listings`);
-    } catch (err) {
-      console.error(`[eBay API] Error for "${query}":`, (err as Error).message);
-    }
+    console.error(`[Liquidation.com] Error:`, (err as Error).message);
   }
 
   return listings;
 }
 
-// ─── eBay RSS (backup) ───────────────────────────────────
+// ─── HiBid (Auction Platform) ────────────────────────────
 
-async function scrapeEbayRSS(): Promise<GpuListing[]> {
+async function scrapeHiBid(): Promise<GpuListing[]> {
   const listings: GpuListing[] = [];
-  const queries = ['GPU+lot+bulk+NVIDIA', 'RTX+4090+lot', 'datacenter+GPU+liquidation', 'NVIDIA+A100+lot'];
 
-  for (const query of queries) {
-    try {
-      const url = `https://www.ebay.com/sch/i.html?_nkw=${query}&_rss=1&_sop=10&LH_BIN=1`;
-      const res = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
-      });
+  try {
+    const url = 'https://www.hibid.com/search?q=NVIDIA+GPU+lot&sort=EndingSoon';
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
 
-      if (!res.ok) continue;
-      const xml = await res.text();
+    const itemRegex = /<a[^>]*href="(\/lots\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+    let match;
+    while ((match = itemRegex.exec(html)) !== null && listings.length < 15) {
+      const link = `https://www.hibid.com${match[1]}`;
+      const text = match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const gpuModel = detectGPUModel(text);
+      if (!gpuModel || text.length < 10) continue;
 
-      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-      let match;
-      while ((match = itemRegex.exec(xml)) !== null) {
-        const block = match[1];
-        const title = extractTag(block, 'title');
-        const link = extractTag(block, 'link');
+      const priceMatch = text.match(/\$([0-9,]+)/);
+      const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
+      const quantity = detectQuantity(text);
 
-        if (!title || title.length < 10 || isExcluded(title)) continue;
-
-        const gpuModel = detectGPUModel(title);
-        if (!gpuModel) continue;
-
-        // Try to extract price from description
-        const desc = extractTag(block, 'description');
-        const priceMatch = desc.match(/\$([0-9,]+\.?\d*)/);
-        const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
-        const quantity = detectQuantity(title);
-
-        const listing: GpuListing = {
-          title: decodeHtmlEntities(title),
-          price,
-          pricePerUnit: quantity > 1 && price > 0 ? Math.round(price / quantity) : price,
-          quantity,
-          gpuModel,
-          condition: 'Used',
-          seller: 'eBay',
-          link: link || '',
-          source: 'ebay-rss',
-          foundAt: new Date().toISOString(),
-          score: 0,
-        };
-        listing.score = scoreListing(listing);
-        listings.push(listing);
-      }
-    } catch (err) {
-      console.error(`[eBay RSS] Error:`, (err as Error).message);
+      const listing: GpuListing = {
+        title: text.slice(0, 120),
+        price, pricePerUnit: quantity > 1 && price > 0 ? Math.round(price / quantity) : price,
+        quantity, gpuModel, condition: 'Auction', seller: 'HiBid',
+        link, source: 'hibid', foundAt: new Date().toISOString(), score: 0,
+      };
+      listing.score = scoreListing(listing);
+      listings.push(listing);
     }
+  } catch (err) {
+    console.error(`[HiBid] Error:`, (err as Error).message);
   }
 
   return listings;
 }
 
-// ─── Reddit RSS ──────────────────────────────────────────
+// ─── GovDeals (Government Surplus) ───────────────────────
 
-async function scrapeRedditRSS(): Promise<GpuListing[]> {
+async function scrapeGovDeals(): Promise<GpuListing[]> {
+  const listings: GpuListing[] = [];
+
+  try {
+    const url = 'https://www.govdeals.com/index.cfm?fa=Main.AdvSearchResultsNew&searchPg=Category&additession=&category=00&description=GPU+NVIDIA&min_price=0&max_price=0&state=&auction_id=&sort=ad&PageNum=1&ESSION_ID=';
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+
+    const rowRegex = /<a[^>]*href="(index\.cfm\?fa=Main\.Item[^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
+    let match;
+    while ((match = rowRegex.exec(html)) !== null && listings.length < 15) {
+      const link = `https://www.govdeals.com/${match[1]}`;
+      const text = match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const gpuModel = detectGPUModel(text);
+      if (!gpuModel) continue;
+
+      const priceMatch = text.match(/\$([0-9,]+)/);
+      const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
+      const quantity = detectQuantity(text);
+
+      const listing: GpuListing = {
+        title: text.slice(0, 120),
+        price, pricePerUnit: quantity > 1 && price > 0 ? Math.round(price / quantity) : price,
+        quantity, gpuModel, condition: 'Government Surplus', seller: 'GovDeals',
+        link, source: 'govdeals', foundAt: new Date().toISOString(), score: 0,
+      };
+      listing.score = scoreListing(listing) + 30;
+      listings.push(listing);
+    }
+  } catch (err) {
+    console.error(`[GovDeals] Error:`, (err as Error).message);
+  }
+
+  return listings;
+}
+
+// ─── Reddit (r/hardwareswap sellers) ─────────────────────
+
+async function scrapeReddit(): Promise<GpuListing[]> {
   const listings: GpuListing[] = [];
   const feeds = [
     'https://www.reddit.com/r/hardwareswap/search.rss?q=GPU+lot+OR+RTX+4090+OR+RTX+5090+OR+A100+OR+H100&sort=new&t=week',
@@ -271,32 +250,24 @@ async function scrapeRedditRSS(): Promise<GpuListing[]> {
       let match;
       while ((match = entryRegex.exec(xml)) !== null) {
         const block = match[1];
-        const title = extractTag(block, 'title');
+        const titleMatch = block.match(/<title[^>]*>([\s\S]*?)<\/title>/);
         const linkMatch = block.match(/<link[^>]*href="([^"]+)"/);
+        const title = titleMatch ? titleMatch[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : '';
         const link = linkMatch ? linkMatch[1] : '';
 
         if (!title || title.length < 10) continue;
-
         const gpuModel = detectGPUModel(title);
         if (!gpuModel) continue;
 
-        // Extract price from title
         const priceMatch = title.match(/\$([0-9,]+)/);
         const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
         const quantity = detectQuantity(title);
 
         const listing: GpuListing = {
-          title: decodeHtmlEntities(title).slice(0, 120),
-          price,
-          pricePerUnit: quantity > 1 && price > 0 ? Math.round(price / quantity) : price,
-          quantity,
-          gpuModel,
-          condition: 'Used',
-          seller: 'Reddit',
-          link,
-          source: 'reddit',
-          foundAt: new Date().toISOString(),
-          score: 0,
+          title: title.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').slice(0, 120),
+          price, pricePerUnit: quantity > 1 && price > 0 ? Math.round(price / quantity) : price,
+          quantity, gpuModel, condition: 'Used', seller: 'Reddit',
+          link, source: 'reddit', foundAt: new Date().toISOString(), score: 0,
         };
         listing.score = scoreListing(listing);
         listings.push(listing);
@@ -309,53 +280,61 @@ async function scrapeRedditRSS(): Promise<GpuListing[]> {
   return listings;
 }
 
-// ─── GSA Auctions (Government Surplus) ───────────────────
+// ─── Google News for GPU bulk sales ──────────────────────
 
-async function scrapeGSA(): Promise<GpuListing[]> {
+async function scrapeGpuSaleNews(): Promise<GpuListing[]> {
   const listings: GpuListing[] = [];
+  const queries = [
+    'GPU bulk lot sale',
+    'NVIDIA RTX 4090 bulk wholesale',
+    'datacenter GPU liquidation sale',
+    'GPU auction lot NVIDIA',
+  ];
 
-  try {
-    const res = await fetch('https://gsaauctions.gov/gsaauctions/aucssrch?searchType=1&keyword=GPU+NVIDIA&x=0&y=0', {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
-    });
-    if (!res.ok) return [];
+  const now = Date.now();
+  const picked = queries
+    .map((q, i) => ({ q, sort: Math.sin(now / 1000 + i * 53) }))
+    .sort((a, b) => a.sort - b.sort)
+    .map(x => x.q)
+    .slice(0, 2);
 
-    const html = await res.text();
+  for (const query of picked) {
+    try {
+      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query + ' when:7d')}&hl=en-US&gl=US&ceid=US:en`;
+      const res = await fetch(rssUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
+      });
+      if (!res.ok) continue;
+      const xml = await res.text();
 
-    // Parse auction listings from HTML
-    const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
-    for (const row of rows) {
-      const titleMatch = row.match(/>([^<]*(?:GPU|NVIDIA|RTX|Tesla|Quadro)[^<]*)</i);
-      const linkMatch = row.match(/href="([^"]*aucDetail[^"]*)"/);
-      if (!titleMatch) continue;
+      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+      let match;
+      while ((match = itemRegex.exec(xml)) !== null && listings.length < 10) {
+        const block = match[1];
+        const titleMatch = block.match(/<title[^>]*>([\s\S]*?)<\/title>/);
+        const linkMatch = block.match(/<link[^>]*>([\s\S]*?)<\/link>/);
+        const sourceMatch = block.match(/<source[^>]*>([\s\S]*?)<\/source>/);
 
-      const title = titleMatch[1].trim();
-      const gpuModel = detectGPUModel(title);
-      if (!gpuModel) continue;
+        const title = titleMatch ? titleMatch[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : '';
+        const link = linkMatch ? linkMatch[1].trim() : '';
+        const source = sourceMatch ? sourceMatch[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : 'News';
 
-      const link = linkMatch ? `https://gsaauctions.gov${linkMatch[1]}` : '';
-      const priceMatch = row.match(/\$([0-9,]+\.?\d*)/);
-      const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
-      const quantity = detectQuantity(title);
+        if (!title || title.length < 15) continue;
+        const gpuModel = detectGPUModel(title);
+        if (!gpuModel) continue;
 
-      const listing: GpuListing = {
-        title: title.slice(0, 120),
-        price,
-        pricePerUnit: quantity > 1 && price > 0 ? Math.round(price / quantity) : price,
-        quantity,
-        gpuModel,
-        condition: 'Government Surplus',
-        seller: 'GSA Auctions',
-        link,
-        source: 'gsa',
-        foundAt: new Date().toISOString(),
-        score: 0,
-      };
-      listing.score = scoreListing(listing) + 30; // Bonus for government source
-      listings.push(listing);
+        const listing: GpuListing = {
+          title: title.replace(/&amp;/g, '&').slice(0, 120),
+          price: 0, pricePerUnit: 0, quantity: 1,
+          gpuModel, condition: 'News', seller: source,
+          link, source: 'news', foundAt: new Date().toISOString(), score: 0,
+        };
+        listing.score = scoreListing(listing) + 10;
+        listings.push(listing);
+      }
+    } catch (err) {
+      console.error(`[GPU News] Error:`, (err as Error).message);
     }
-  } catch (err) {
-    console.error(`[GSA] Error:`, (err as Error).message);
   }
 
   return listings;
@@ -369,25 +348,29 @@ export async function scanForGpuDeals(): Promise<{
   queriesUsed: string[];
   sources: Record<string, number>;
 }> {
-  // Run all sources in parallel
-  const [ebayApi, ebayRss, reddit, gsa] = await Promise.all([
-    scrapeEbayAPI(),
-    scrapeEbayRSS(),
-    scrapeRedditRSS(),
-    scrapeGSA(),
+  // Run ALL sources in parallel
+  const [bidspotter, liquidation, hibid, govdeals, reddit, gpuNews] = await Promise.all([
+    scrapeBidSpotter(),
+    scrapeLiquidation(),
+    scrapeHiBid(),
+    scrapeGovDeals(),
+    scrapeReddit(),
+    scrapeGpuSaleNews(),
   ]);
 
   const sources: Record<string, number> = {
-    'ebay-api': ebayApi.length,
-    'ebay-rss': ebayRss.length,
-    'reddit': reddit.length,
-    'gsa': gsa.length,
+    bidspotter: bidspotter.length,
+    liquidation: liquidation.length,
+    hibid: hibid.length,
+    govdeals: govdeals.length,
+    reddit: reddit.length,
+    'gpu-news': gpuNews.length,
   };
 
-  const allListings = [...ebayApi, ...ebayRss, ...reddit, ...gsa];
+  const allListings = [...bidspotter, ...liquidation, ...hibid, ...govdeals, ...reddit, ...gpuNews];
   const totalScanned = allListings.length;
 
-  console.log(`[GPU] Sources: eBay API=${ebayApi.length}, eBay RSS=${ebayRss.length}, Reddit=${reddit.length}, GSA=${gsa.length}`);
+  console.log(`[GPU] Sources: BidSpotter=${bidspotter.length}, Liquidation=${liquidation.length}, HiBid=${hibid.length}, GovDeals=${govdeals.length}, Reddit=${reddit.length}, News=${gpuNews.length}`);
 
   // Dedup by link
   const seen = new Set<string>();
@@ -405,22 +388,4 @@ export async function scanForGpuDeals(): Promise<{
     .map(([source, count]) => `${source}: ${count}`);
 
   return { listings: deduped, totalScanned, queriesUsed, sources };
-}
-
-// ─── Helpers ─────────────────────────────────────────────
-
-function extractTag(xml: string, tag: string): string {
-  const cdataRegex = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]></${tag}>`);
-  const cdataMatch = xml.match(cdataRegex);
-  if (cdataMatch) return cdataMatch[1].trim();
-
-  const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`);
-  const match = xml.match(regex);
-  return match ? match[1].trim() : '';
-}
-
-function decodeHtmlEntities(str: string): string {
-  return str
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#x27;/g, "'");
 }
