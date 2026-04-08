@@ -5,6 +5,7 @@ import { DiscordWebhook } from '@/lib/discord';
 import { generateIntel, getActionItem } from '@/lib/intel';
 import { syncMarketIntel, syncLeads } from '@/lib/sheets';
 import { saveListings, saveLeads } from '@/lib/store';
+import { evaluateAlerts, saveAlerts, sendAlertToDiscord } from '@/lib/alerts';
 import { getDiscordEnabled } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
@@ -72,6 +73,14 @@ export async function GET(request: Request) {
       console.error('[Store] Save error:', (err as Error).message);
     }
 
+    // Evaluate alert rules
+    const alerts = evaluateAlerts(listings, leads);
+    let alertCount = 0;
+    if (alerts.length > 0) {
+      alertCount = await saveAlerts(alerts) || 0;
+      await sendAlertToDiscord(alerts);
+    }
+
     // Sync to Google Sheet
     try {
       await Promise.all([
@@ -91,6 +100,7 @@ export async function GET(request: Request) {
       intelItems: intel.length,
       scanned: totalScanned,
       sources,
+      alerts: alertCount,
       discordStatus,
       elapsed: `${elapsed}s`,
     });

@@ -4,6 +4,7 @@ import { findGpuCompanies } from '@/lib/lead-finder';
 import { generateIntel, getActionItem } from '@/lib/intel';
 import { syncMarketIntel, syncLeads } from '@/lib/sheets';
 import { saveListings, saveLeads } from '@/lib/store';
+import { evaluateAlerts, saveAlerts, sendAlertToDiscord } from '@/lib/alerts';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -37,6 +38,14 @@ export async function GET(request: Request) {
       console.error('[Store] Save error:', (err as Error).message);
     }
 
+    // Evaluate alert rules
+    const alerts = evaluateAlerts(listings, leads);
+    let alertCount = 0;
+    if (alerts.length > 0) {
+      alertCount = await saveAlerts(alerts) || 0;
+      await sendAlertToDiscord(alerts);
+    }
+
     // Sync to Google Sheet
     try {
       await Promise.all([
@@ -59,6 +68,7 @@ export async function GET(request: Request) {
       actionItem,
       scanned: totalScanned,
       sources,
+      alerts: alertCount,
       elapsed: `${elapsed}s`,
     });
   } catch (error) {

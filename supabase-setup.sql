@@ -66,3 +66,21 @@ CREATE INDEX IF NOT EXISTS idx_gpu_leads_found ON gpu_leads(found_at);
 
 ALTER TABLE gpu_leads ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all gpu_leads" ON gpu_leads FOR ALL USING (true) WITH CHECK (true);
+
+-- Alerts triggered by rules engine
+CREATE TABLE IF NOT EXISTS alerts (
+  id SERIAL PRIMARY KEY,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  message TEXT,
+  link TEXT,
+  priority TEXT DEFAULT 'medium',
+  sent BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at);
+CREATE INDEX IF NOT EXISTS idx_alerts_link ON alerts(link);
+
+ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all alerts" ON alerts FOR ALL USING (true) WITH CHECK (true);
