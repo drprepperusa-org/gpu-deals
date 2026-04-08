@@ -4,6 +4,7 @@ import { findGpuCompanies } from '@/lib/lead-finder';
 import { DiscordWebhook } from '@/lib/discord';
 import { generateIntel, getActionItem } from '@/lib/intel';
 import { syncMarketIntel, syncLeads } from '@/lib/sheets';
+import { saveListings, saveLeads } from '@/lib/store';
 import { getDiscordEnabled } from '@/lib/settings';
 
 export const dynamic = 'force-dynamic';
@@ -59,6 +60,16 @@ export async function GET(request: Request) {
       });
     } else {
       discordStatus = await discord.sendHeartbeat();
+    }
+
+    // Save to Supabase (so Vercel dashboard can read it)
+    try {
+      await Promise.all([
+        saveListings(listings),
+        saveLeads(leads),
+      ]);
+    } catch (err) {
+      console.error('[Store] Save error:', (err as Error).message);
     }
 
     // Sync to Google Sheet

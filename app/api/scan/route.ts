@@ -3,18 +3,19 @@ import { scanForGpuDeals } from '@/lib/gpu-scraper';
 import { findGpuCompanies } from '@/lib/lead-finder';
 import { generateIntel, getActionItem } from '@/lib/intel';
 import { syncMarketIntel, syncLeads } from '@/lib/sheets';
+import { saveListings, saveLeads } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
 /**
- * Manual scan endpoint — protected by JWT auth via proxy.
- * Used by the dashboard "Scan for GPU Deals" button.
+ * Manual scan endpoint — runs from localhost.
+ * Scrapes, saves to Supabase, syncs to Sheets.
  */
 export async function GET(request: Request) {
   const startTime = Date.now();
   const { searchParams } = new URL(request.url);
-  const range = searchParams.get('range') || 'today'; // 'today' | '3d' | 'week'
+  const range = searchParams.get('range') || 'today';
 
   try {
     const [dealResults, leads] = await Promise.all([
@@ -25,6 +26,16 @@ export async function GET(request: Request) {
     const { listings, totalScanned, sources } = dealResults;
     const intel = generateIntel({ listings, leads });
     const actionItem = getActionItem(listings, leads);
+
+    // Save to Supabase (so Vercel dashboard can read it)
+    try {
+      await Promise.all([
+        saveListings(listings),
+        saveLeads(leads),
+      ]);
+    } catch (err) {
+      console.error('[Store] Save error:', (err as Error).message);
+    }
 
     // Sync to Google Sheet
     try {

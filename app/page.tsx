@@ -140,8 +140,31 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadDiscordSetting();
-    setIsLocal(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const local = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    setIsLocal(local);
+    // On Vercel: auto-load results from Supabase
+    if (!local) loadResults();
   }, []);
+
+  async function loadResults() {
+    setScanning(true);
+    log('Loading latest GPU deals from database...', 'info');
+    try {
+      const res = await fetch('/api/results?days=7');
+      const data = await res.json();
+      if (data.success) {
+        setListings(data.listingsData || []);
+        setLeads(data.leadsData || []);
+        setLoaded(true);
+        log(`Loaded ${data.listings} listings, ${data.leads} leads`, 'ok');
+      } else {
+        log('Error: ' + (data.error || 'Failed to load'), 'err');
+      }
+    } catch (err) {
+      log('Failed: ' + (err as Error).message, 'err');
+    }
+    setScanning(false);
+  }
 
   function log(msg: string, type = '') {
     setLogs(prev => [...prev.slice(-50), { msg: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' › ' + msg, type }]);
