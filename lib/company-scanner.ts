@@ -244,49 +244,6 @@ async function searchGovernmentContracts(): Promise<CompanyLead[]> {
   return leads;
 }
 
-// ─── SEC EDGAR — Companies reporting GPU assets ──────────
-
-async function searchSECFilings(): Promise<CompanyLead[]> {
-  const leads: CompanyLead[] = [];
-
-  try {
-    const res = await fetch('https://efts.sec.gov/LATEST/search-index?q=%22GPU%22+%22NVIDIA%22+%22liquidation%22&dateRange=custom&startdt=' +
-      new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) +
-      '&enddt=' + new Date().toISOString().slice(0, 10) + '&forms=8-K,10-K,10-Q', {
-      headers: { 'User-Agent': 'GPUDeals gpu-deals@example.com' },
-    });
-
-    if (!res.ok) return [];
-    const data = await res.json();
-    const hits = data.hits?.hits || [];
-
-    for (const hit of hits.slice(0, 10)) {
-      const source = hit._source || {};
-      const company = source.entity_name || source.display_names?.[0] || '';
-      const description = source.file_description || '';
-
-      if (!company) continue;
-
-      leads.push({
-        company: company.slice(0, 60),
-        website: `https://www.google.com/search?q=${encodeURIComponent(company + ' GPU site:sec.gov')}`,
-        type: 'SEC Filing',
-        description: `SEC filing mentioning GPU/NVIDIA liquidation: ${description.slice(0, 150)}`,
-        location: 'USA',
-        gpuModels: 'Various',
-        priority: 'Medium',
-        notes: 'SEC EDGAR filing',
-        foundAt: new Date().toISOString(),
-      });
-    }
-
-    console.log(`[SEC EDGAR] Found ${leads.length} GPU-related filings`);
-  } catch (err) {
-    console.error(`[SEC EDGAR] Error:`, (err as Error).message);
-  }
-
-  return leads;
-}
 
 // ─── Google News RSS — Company announcements ─────────────
 
@@ -432,17 +389,16 @@ async function searchRedditSellers(): Promise<CompanyLead[]> {
 // ─── Main: Find all GPU companies ────────────────────────
 
 export async function findGpuCompanies(): Promise<CompanyLead[]> {
-  const [cse, govContracts, sec, news, reddit] = await Promise.all([
+  const [cse, govContracts, news, reddit] = await Promise.all([
     searchGoogleCSE(),
     searchGovernmentContracts(),
-    searchSECFilings(),
     searchGoogleNews(),
     searchRedditSellers(),
   ]);
 
-  const allLeads = [...cse, ...govContracts, ...sec, ...news, ...reddit];
+  const allLeads = [...cse, ...govContracts, ...news, ...reddit];
 
-  console.log(`[Companies] Total: ${allLeads.length} | CSE=${cse.length}, Gov=${govContracts.length}, SEC=${sec.length}, News=${news.length}, Reddit=${reddit.length}`);
+  console.log(`[Companies] Total: ${allLeads.length} | CSE=${cse.length}, Gov=${govContracts.length}, News=${news.length}, Reddit=${reddit.length}`);
 
   // Dedup by company name
   const seen = new Set<string>();
