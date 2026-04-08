@@ -231,11 +231,11 @@ async function scrapeGovDeals(): Promise<GpuListing[]> {
 
 // ─── Reddit (r/hardwareswap sellers) ─────────────────────
 
-async function scrapeReddit(): Promise<GpuListing[]> {
+async function scrapeReddit(redditTime: string): Promise<GpuListing[]> {
   const listings: GpuListing[] = [];
   const feeds = [
-    'https://www.reddit.com/r/hardwareswap/search.rss?q=GPU+lot+OR+RTX+4090+OR+RTX+5090+OR+A100+OR+H100&sort=new&t=week',
-    'https://www.reddit.com/r/buildapcsales/search.rss?q=GPU&sort=new&t=day',
+    `https://www.reddit.com/r/hardwareswap/search.rss?q=GPU+lot+OR+RTX+4090+OR+RTX+5090+OR+A100+OR+H100&sort=new&t=${redditTime}`,
+    `https://www.reddit.com/r/buildapcsales/search.rss?q=GPU&sort=new&t=${redditTime}`,
   ];
 
   for (const feedUrl of feeds) {
@@ -282,7 +282,7 @@ async function scrapeReddit(): Promise<GpuListing[]> {
 
 // ─── Google News for GPU bulk sales ──────────────────────
 
-async function scrapeGpuSaleNews(): Promise<GpuListing[]> {
+async function scrapeGpuSaleNews(newsDays: string): Promise<GpuListing[]> {
   const listings: GpuListing[] = [];
   const queries = [
     'GPU bulk lot sale',
@@ -300,7 +300,7 @@ async function scrapeGpuSaleNews(): Promise<GpuListing[]> {
 
   for (const query of picked) {
     try {
-      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query + ' when:7d')}&hl=en-US&gl=US&ceid=US:en`;
+      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query + ` when:${newsDays}`)}&hl=en-US&gl=US&ceid=US:en`;
       const res = await fetch(rssUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
       });
@@ -342,20 +342,24 @@ async function scrapeGpuSaleNews(): Promise<GpuListing[]> {
 
 // ─── Main Scanner ────────────────────────────────────────
 
-export async function scanForGpuDeals(): Promise<{
+export async function scanForGpuDeals(range: string = 'today'): Promise<{
   listings: GpuListing[];
   totalScanned: number;
   queriesUsed: string[];
   sources: Record<string, number>;
 }> {
+  // Map range to source-specific time params
+  const redditTime = range === 'week' ? 'week' : range === '3d' ? 'week' : 'day';
+  const newsDays = range === 'week' ? '7d' : range === '3d' ? '3d' : '1d';
+
   // Run ALL sources in parallel
   const [bidspotter, liquidation, hibid, govdeals, reddit, gpuNews] = await Promise.all([
     scrapeBidSpotter(),
     scrapeLiquidation(),
     scrapeHiBid(),
     scrapeGovDeals(),
-    scrapeReddit(),
-    scrapeGpuSaleNews(),
+    scrapeReddit(redditTime),
+    scrapeGpuSaleNews(newsDays),
   ]);
 
   const sources: Record<string, number> = {

@@ -80,6 +80,7 @@ export default function Dashboard() {
   const [totalScanned, setTotalScanned] = useState(0);
   const [sources, setSources] = useState<Record<string, number>>({});
   const [clock, setClock] = useState('');
+  const [timeRange, setTimeRange] = useState<'today' | '3d' | 'week'>('today');
   const [logs, setLogs] = useState<LogEntry[]>([{ msg: 'System online. Ready to scan.', type: 'info' }]);
   const [discordEnabled, setDiscordEnabled] = useState(true);
   const [togglingDiscord, setTogglingDiscord] = useState(false);
@@ -148,7 +149,7 @@ export default function Dashboard() {
     // loading handled by scanning state
     log('Scanning for GPU deals across all sources...', 'info');
     try {
-      const res = await fetch('/api/scan');
+      const res = await fetch(`/api/scan?range=${timeRange}`);
       const data: CronResult = await res.json();
       if (data.success) {
         setTotalScanned(data.scanned);
@@ -249,14 +250,24 @@ export default function Dashboard() {
 
               {/* Scan Button */}
               <div className="panel rounded-xl p-5">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
                   <button onClick={runScan} disabled={scanning}
                     className="px-6 py-2.5 cursor-pointer bg-gradient-to-r from-accent to-indigo-600 hover:from-accent/90 hover:to-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-all glow-btn flex items-center gap-2">
                     {scanning
                       ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Scanning...</>
-                      : <><Search className="w-3.5 h-3.5" /> Scan for GPU Deals</>}
+                      : <><Search className="w-3.5 h-3.5" /> Scan</>}
                   </button>
-                  <div className="flex-1">
+                  <select
+                    value={timeRange}
+                    onChange={e => setTimeRange(e.target.value as 'today' | '3d' | 'week')}
+                    disabled={scanning}
+                    className="px-3 py-2.5 cursor-pointer bg-dark-bg border border-dark-border rounded-lg text-xs text-zinc-300 outline-none focus:border-accent/50 transition-colors"
+                  >
+                    <option value="today">Today</option>
+                    <option value="3d">Last 3 Days</option>
+                    <option value="week">Last 7 Days</option>
+                  </select>
+                  <div className="flex-1 min-w-0">
                     <div className="text-xs text-zinc-300 font-medium">{loaded ? `${listings.length} deals found` : 'Ready to scan'}</div>
                     <div className="text-[10px] text-zinc-600 mt-0.5">BidSpotter · Liquidation.com · HiBid · GovDeals · Reddit</div>
                   </div>

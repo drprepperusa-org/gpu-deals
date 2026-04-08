@@ -11,12 +11,14 @@ export const maxDuration = 120;
  * Manual scan endpoint — protected by JWT auth via proxy.
  * Used by the dashboard "Scan for GPU Deals" button.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const startTime = Date.now();
+  const { searchParams } = new URL(request.url);
+  const range = searchParams.get('range') || 'today'; // 'today' | '3d' | 'week'
 
   try {
     const [dealResults, leads] = await Promise.all([
-      scanForGpuDeals(),
+      scanForGpuDeals(range),
       findGpuCompanies(),
     ]);
 
