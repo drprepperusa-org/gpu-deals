@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { scanForGpuDeals } from '@/lib/gpu-scraper';
-import { findGpuCompanies } from '@/lib/lead-finder';
+import { findGpuCompanies } from '@/lib/company-scanner';
 import { DiscordWebhook } from '@/lib/discord';
 import { generateIntel, getActionItem } from '@/lib/intel';
 import { syncMarketIntel, syncLeads, syncReviewQueue, syncAlerts } from '@/lib/sheets';
