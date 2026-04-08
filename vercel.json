@@ -1,15 +1,9 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron?secret=${CRON_SECRET}",
-      "schedule": "0 12 * * *"
-    }
-  ],
   "functions": {
     "app/api/cron/route.ts": {
       "maxDuration": 60
     },
-    "app/api/news/route.ts": {
+    "app/api/scan/route.ts": {
       "maxDuration": 60
     }
   }
