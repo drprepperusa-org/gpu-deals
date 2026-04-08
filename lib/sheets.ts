@@ -1,6 +1,6 @@
 /**
  * Sync findings to Google Sheets using Service Account.
- * Uses JWT to authenticate — no OAuth flow needed, never expires.
+ * Deduplicates before appending — no duplicate rows.
  */
 
 import { SignJWT, importPKCS8 } from 'jose';
@@ -17,12 +17,9 @@ async function getAccessToken(): Promise<string> {
     throw new Error('GOOGLE_SERVICE_EMAIL and GOOGLE_PRIVATE_KEY required for Sheets sync');
   }
 
-  // Parse the private key (handle escaped newlines from env)
   const privateKey = privateKeyRaw.replace(/\\n/g, '\n');
-
   const now = Math.floor(Date.now() / 1000);
 
-  // Create JWT
   const key = await importPKCS8(privateKey, 'RS256');
   const jwt = await new SignJWT({
     iss: email,
@@ -34,7 +31,6 @@ async function getAccessToken(): Promise<string> {
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
     .sign(key);
 
-  // Exchange JWT for access token
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -51,6 +47,22 @@ async function getAccessToken(): Promise<string> {
 
   const data = await res.json();
   return data.access_token;
+}
+
+/**
+ * Read existing rows from a sheet range.
+ */
+async function readSheet(range: string): Promise<string[][]> {
+  const accessToken = await getAccessToken();
+
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}`,
+    { headers: { 'Authorization': `Bearer ${accessToken}` } }
+  );
+
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.values || [];
 }
 
 async function appendToSheet(range: string, values: string[][]) {
@@ -79,6 +91,7 @@ async function appendToSheet(range: string, values: string[][]) {
 
 /**
  * Sync market intel findings to MARKET_INTEL tab.
+ * Deduplicates by link (column C).
  */
 export async function syncMarketIntel(intel: MarketIntel[], listings: GpuListing[]) {
   if (!process.env.GOOGLE_SERVICE_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
@@ -87,24 +100,32 @@ export async function syncMarketIntel(intel: MarketIntel[], listings: GpuListing
   }
 
   try {
+    // Read existing links to avoid duplicates
+    const existing = await readSheet('MARKET_INTEL!C:C');
+    const existingLinks = new Set(existing.map(row => row[0]?.trim()).filter(Boolean));
+
     const rows: string[][] = [];
 
-    // Intel rows
     for (const i of intel) {
+      if (i.sourceLink && existingLinks.has(i.sourceLink)) continue;
       rows.push([i.timestamp, i.finding, i.sourceLink]);
+      existingLinks.add(i.sourceLink);
     }
 
-    // Top listings as intel
     for (const l of listings.slice(0, 5)) {
+      if (existingLinks.has(l.link)) continue;
       rows.push([
         new Date().toISOString(),
         `${l.gpuModel} — $${l.pricePerUnit}/unit × ${l.quantity} (${l.condition}) from ${l.source} — ${l.seller}`,
         l.link,
       ]);
+      existingLinks.add(l.link);
     }
 
     if (rows.length > 0) {
       await appendToSheet('MARKET_INTEL!A:C', rows);
+    } else {
+      console.log('[Sheets] No new market intel to sync (all duplicates)');
     }
   } catch (err) {
     console.error('[Sheets] Market intel sync error:', (err as Error).message);
@@ -113,6 +134,7 @@ export async function syncMarketIntel(intel: MarketIntel[], listings: GpuListing
 
 /**
  * Sync company leads to LEADS_TRACKER tab.
+ * Deduplicates by website (column J).
  */
 export async function syncLeads(leads: CompanyLead[]) {
   if (!process.env.GOOGLE_SERVICE_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
@@ -123,21 +145,31 @@ export async function syncLeads(leads: CompanyLead[]) {
   if (leads.length === 0) return;
 
   try {
-    const rows = leads.map(l => [
-      l.company,
-      '', // Contact
-      '', // Email
-      '', // Phone
-      l.location,
-      l.gpuModels,
-      '', // Inventory
-      l.priority,
-      `${l.type} — ${l.description.slice(0, 100)}`,
-      l.website,
-      l.foundAt,
-    ]);
+    // Read existing websites to avoid duplicates
+    const existing = await readSheet('LEADS_TRACKER!J:J');
+    const existingWebsites = new Set(existing.map(row => row[0]?.trim().toLowerCase()).filter(Boolean));
 
-    await appendToSheet('LEADS_TRACKER!A:K', rows);
+    const rows = leads
+      .filter(l => !existingWebsites.has(l.website.toLowerCase()))
+      .map(l => [
+        l.company,
+        '', // Contact
+        '', // Email
+        '', // Phone
+        l.location,
+        l.gpuModels,
+        '', // Inventory
+        l.priority,
+        `${l.type} — ${l.description.slice(0, 100)}`,
+        l.website,
+        l.foundAt,
+      ]);
+
+    if (rows.length > 0) {
+      await appendToSheet('LEADS_TRACKER!A:K', rows);
+    } else {
+      console.log('[Sheets] No new leads to sync (all duplicates)');
+    }
   } catch (err) {
     console.error('[Sheets] Leads sync error:', (err as Error).message);
   }
