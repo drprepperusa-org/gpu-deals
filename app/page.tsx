@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Cpu, Activity, RefreshCw, Radio, Clock,
+  Cpu, Activity, RefreshCw, Radio, Clock, AlertTriangle,
   Bell, BellOff, Search, Building2, Target,
 } from 'lucide-react';
 import type { GpuListing, CompanyLead } from '@/lib/types';
@@ -228,6 +228,9 @@ export default function Dashboard() {
               <div className="h-4 w-px bg-dark-border hidden sm:block" />
               <span className="text-[11px] font-mono text-zinc-600 hidden sm:inline">{clock}</span>
               <div className="h-4 w-px bg-dark-border" />
+              <button onClick={() => router.push('/alerts')} className="p-1.5 cursor-pointer rounded-lg hover:bg-dark-surface2 text-zinc-500 hover:text-amber-400 transition-all" title="Alerts">
+                <AlertTriangle className="w-3.5 h-3.5" />
+              </button>
               <button onClick={handleLogout} className="px-2.5 py-1.5 cursor-pointer rounded-lg hover:bg-dark-surface2 text-[11px] font-medium text-zinc-500 hover:text-rose-400 transition-all">
                 Logout
               </button>
