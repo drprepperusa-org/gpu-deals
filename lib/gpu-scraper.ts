@@ -21,6 +21,74 @@ const GPU_KEYWORDS = [
   'gpu', 'graphics card', 'nvidia', 'geforce', 'radeon', 'video card',
 ];
 
+// ─── Hard Reject Filter ──────────────────────────────────
+// Items that match these are NOT standalone GPUs — reject immediately.
+
+const REJECT_TERMS = [
+  // Computers & laptops
+  'laptop', 'notebook', 'macbook', 'chromebook', 'ultrabook',
+  'desktop computer', 'complete system', 'complete pc', 'gaming pc',
+  'workstation pc', 'all-in-one', 'mini pc', 'nuc',
+  // CPUs
+  'cpu', 'processor', 'xeon', 'ryzen', 'threadripper', 'i7-', 'i9-', 'i5-',
+  'core i7', 'core i9', 'core i5', 'epyc',
+  // Other components (not GPUs)
+  'motherboard', 'mainboard', 'mobo',
+  'ram only', 'memory only', 'ddr4 only', 'ddr5 only',
+  'ssd only', 'nvme only', 'hard drive', 'hdd only',
+  'power supply', 'psu only',
+  'case only', 'chassis only', 'enclosure only',
+  'monitor only', 'display only', 'screen only',
+  'keyboard', 'mouse only',
+  'cable only', 'adapter only', 'riser only',
+  // Junk / broken
+  'broken', 'for parts', 'not working', 'as-is', 'damaged',
+  'untested', 'defective', 'dead', 'burnt',
+  'empty box', 'box only', 'no gpu', 'without gpu',
+  'mining rig frame', 'fan only', 'heatsink only',
+  'bracket only', 'backplate only', 'shroud only',
+  // Mixed lots (not GPU-only)
+  'mixed electronics', 'electronics lot', 'computer parts lot',
+  'office equipment', 'printer', 'scanner',
+  // Software / services
+  'software', 'license', 'subscription', 'cloud credits',
+  'rental', 'renting',
+];
+
+// Items must contain at least one GPU-confirming term
+const GPU_CONFIRM_TERMS = [
+  'gpu', 'graphics card', 'video card',
+  'rtx', 'gtx', 'geforce', 'radeon', 'rx ',
+  'nvidia', 'quadro', 'tesla v100', 'tesla p100', 'tesla t4',
+  'a100', 'a6000', 'a5000', 'a4000', 'h100', 'h200', 'b200',
+  'l40', 'l40s',
+];
+
+/**
+ * Hard filter: reject items that are NOT standalone GPUs.
+ * Returns null if rejected, or the clean title if accepted.
+ */
+function hardFilter(title: string): boolean {
+  const lower = title.toLowerCase();
+
+  // Step 1: Reject if it matches any reject term
+  for (const term of REJECT_TERMS) {
+    if (lower.includes(term)) {
+      // Exception: if the title also strongly confirms GPU
+      // e.g. "RTX 4090 for parts" should still be rejected
+      // but "GPU lot with laptop bag" — the reject term is "laptop" which is wrong
+      // So only allow exception if GPU term comes BEFORE reject term
+      return false;
+    }
+  }
+
+  // Step 2: Must contain at least one GPU-confirming term
+  const hasGpuTerm = GPU_CONFIRM_TERMS.some(term => lower.includes(term));
+  if (!hasGpuTerm) return false;
+
+  return true;
+}
+
 function detectGPUModel(title: string): string {
   const upper = title.toUpperCase();
   return GPU_MODELS.find(m => upper.includes(m)) || '';
@@ -122,7 +190,7 @@ async function scrapeReddit(timeParam: string): Promise<GpuListing[]> {
         const link = linkMatch ? linkMatch[1] : '';
 
         if (!title || title.length < 10) continue;
-        if (!isGpuRelated(title)) continue;
+        if (!hardFilter(title)) continue;
 
         const gpuModel = detectGPUModel(title) || 'GPU';
         const priceMatch = title.match(/\$([0-9,]+)/);
@@ -174,7 +242,7 @@ async function scrapeEbayRSS(): Promise<GpuListing[]> {
         const link = extractTag(block, 'link');
 
         if (!title || title.length < 10) continue;
-        if (!isGpuRelated(title)) continue;
+        if (!hardFilter(title)) continue;
 
         const gpuModel = detectGPUModel(title) || 'GPU';
         const desc = extractTag(block, 'description');
@@ -240,7 +308,7 @@ async function scrapeGoogleGpuDeals(newsDays: string): Promise<GpuListing[]> {
         const source = decodeEntities(extractTag(block, 'source'));
 
         if (!title || title.length < 15) continue;
-        if (!isGpuRelated(title)) continue;
+        if (!hardFilter(title)) continue;
 
         const gpuModel = detectGPUModel(title) || 'GPU';
 
@@ -283,7 +351,7 @@ async function scrapeSwappa(): Promise<GpuListing[]> {
       while ((match = cardRegex.exec(html)) !== null && listings.length < 20) {
         const link = `https://swappa.com${match[1]}`;
         const text = match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (!isGpuRelated(text) || text.length < 10) continue;
+        if (!hardFilter(text) || text.length < 10) continue;
 
         const gpuModel = detectGPUModel(text) || 'GPU';
         const priceMatch = text.match(/\$([0-9,]+)/);
@@ -324,7 +392,7 @@ async function scrapeBidSpotter(): Promise<GpuListing[]> {
     while ((match = lotRegex.exec(html)) !== null && listings.length < 15) {
       const link = `https://www.bidspotter.com${match[1]}`;
       const text = match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      if (!isGpuRelated(text)) continue;
+      if (!hardFilter(text)) continue;
       const gpuModel = detectGPUModel(text) || 'GPU';
       const priceMatch = text.match(/\$([0-9,]+)/);
       const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
@@ -359,7 +427,7 @@ async function scrapeHiBid(): Promise<GpuListing[]> {
     while ((match = itemRegex.exec(html)) !== null && listings.length < 15) {
       const link = `https://www.hibid.com${match[1]}`;
       const text = match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      if (!isGpuRelated(text)) continue;
+      if (!hardFilter(text)) continue;
       const gpuModel = detectGPUModel(text) || 'GPU';
       const priceMatch = text.match(/\$([0-9,]+)/);
       const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
@@ -393,7 +461,7 @@ async function scrapeGovDeals(): Promise<GpuListing[]> {
     while ((match = rowRegex.exec(html)) !== null && listings.length < 15) {
       const link = `https://www.govdeals.com/${match[1]}`;
       const text = match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      if (!isGpuRelated(text)) continue;
+      if (!hardFilter(text)) continue;
       const gpuModel = detectGPUModel(text) || 'GPU';
       const priceMatch = text.match(/\$([0-9,]+)/);
       const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
@@ -436,7 +504,7 @@ async function scrapeCraigslist(): Promise<GpuListing[]> {
         const link = extractTag(block, 'link');
 
         if (!title || title.length < 10) continue;
-        if (!isGpuRelated(title)) continue;
+        if (!hardFilter(title)) continue;
 
         const gpuModel = detectGPUModel(title) || 'GPU';
         const priceMatch = title.match(/\$([0-9,]+)/);
