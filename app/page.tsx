@@ -15,8 +15,11 @@ interface LogEntry { msg: string; type: string; }
 interface CronResult {
   success: boolean;
   listings: number;
+  listingsData: GpuListing[];
   leads: number;
+  leadsData: CompanyLead[];
   intelItems: number;
+  actionItem: string;
   scanned: number;
   sources: Record<string, number>;
   error?: string;
@@ -69,8 +72,8 @@ function SidebarSkeleton() {
 // ─── Dashboard ────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [listings] = useState<GpuListing[]>([]);
-  const [leads] = useState<CompanyLead[]>([]);
+  const [listings, setListings] = useState<GpuListing[]>([]);
+  const [leads, setLeads] = useState<CompanyLead[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [lastScan, setLastScan] = useState('');
@@ -145,7 +148,7 @@ export default function Dashboard() {
     // loading handled by scanning state
     log('Scanning for GPU deals across all sources...', 'info');
     try {
-      const res = await fetch(`/api/cron?secret=${encodeURIComponent('local-dashboard')}`);
+      const res = await fetch('/api/scan');
       const data: CronResult = await res.json();
       if (data.success) {
         setTotalScanned(data.scanned);
@@ -154,6 +157,8 @@ export default function Dashboard() {
         setLoaded(true);
 
         // Fetch the actual listings data
+        setListings(data.listingsData || []);
+        setLeads(data.leadsData || []);
         const activeSources = Object.entries(data.sources || {}).filter(([, v]) => v > 0).map(([k, v]) => `${k}: ${v}`).join(', ');
         log(`Scan complete — ${data.listings} listings, ${data.leads} leads, ${data.scanned} scanned`, 'ok');
         if (activeSources) log(`Sources: ${activeSources}`, 'info');
