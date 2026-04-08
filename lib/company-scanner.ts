@@ -6,6 +6,44 @@
 
 import type { CompanyLead } from './types';
 
+// ─── Hard Filter — GPU only, reject everything else ──────
+
+const REJECT_TERMS = [
+  'laptop', 'notebook', 'macbook', 'chromebook', 'ultrabook',
+  'desktop computer', 'complete system', 'complete pc', 'gaming pc',
+  'workstation pc', 'all-in-one', 'mini pc', 'nuc',
+  'cpu', 'processor', 'xeon', 'ryzen', 'threadripper', 'core i7', 'core i9', 'core i5', 'epyc',
+  'motherboard', 'mainboard', 'mobo',
+  'ram only', 'memory only', 'ddr4', 'ddr5',
+  'ssd only', 'nvme only', 'hard drive', 'hdd',
+  'power supply', 'psu only',
+  'case only', 'chassis', 'enclosure',
+  'monitor only', 'display only', 'screen only',
+  'keyboard', 'mouse only', 'printer', 'scanner',
+  'cable only', 'adapter only', 'riser only',
+  'broken', 'for parts', 'not working', 'as-is', 'damaged', 'defective',
+  'empty box', 'box only', 'no gpu', 'without gpu',
+  'fan only', 'heatsink only', 'bracket only', 'backplate only',
+  'mixed electronics', 'office equipment',
+  'software', 'license', 'subscription', 'cloud credits', 'rental',
+];
+
+const GPU_CONFIRM_TERMS = [
+  'gpu', 'graphics card', 'video card',
+  'rtx', 'gtx', 'geforce', 'radeon',
+  'nvidia', 'quadro', 'tesla v100', 'tesla p100', 'tesla t4',
+  'a100', 'a6000', 'a5000', 'a4000', 'h100', 'h200', 'b200',
+  'l40', 'l40s',
+];
+
+function isGpuOnly(text: string): boolean {
+  const lower = text.toLowerCase();
+  // Reject if contains non-GPU terms
+  if (REJECT_TERMS.some(term => lower.includes(term))) return false;
+  // Must contain at least one GPU term
+  return GPU_CONFIRM_TERMS.some(term => lower.includes(term));
+}
+
 // ─── Known companies to always flag ──────────────────────
 
 const KNOWN_GPU_COMPANIES = [
@@ -144,8 +182,8 @@ async function searchGoogleCSE(): Promise<CompanyLead[]> {
         if (isNewsOutlet(displayLink) || isNewsOutlet(title)) continue;
 
         // Must be GPU-related
-        const lower = fullText.toLowerCase();
-        if (!['gpu', 'nvidia', 'rtx', 'graphics card', 'a100', 'h100'].some(kw => lower.includes(kw))) continue;
+        // Must be GPU-only — reject laptops, CPUs, etc.
+        if (!isGpuOnly(fullText)) continue;
 
         const company = extractCompanyName(title, displayLink);
         if (isNewsOutlet(company)) continue;
@@ -220,8 +258,9 @@ async function searchGovernmentContracts(): Promise<CompanyLead[]> {
 
       if (!company) continue;
 
-      const fullText = (company + ' ' + description).toLowerCase();
-      if (!['gpu', 'nvidia', 'graphics', 'rtx', 'computing', 'accelerator'].some(kw => fullText.includes(kw))) continue;
+      const fullText = company + ' ' + description;
+      // Must be GPU-related, reject laptops/CPUs
+      if (!isGpuOnly(fullText)) continue;
 
       leads.push({
         company: company.slice(0, 60),
@@ -277,10 +316,11 @@ async function searchRedditSellers(): Promise<CompanyLead[]> {
         const author = authorMatch ? authorMatch[1].trim() : '';
 
         if (!title) continue;
-        const lower = title.toLowerCase();
-        if (!['gpu', 'nvidia', 'rtx', 'graphics card'].some(kw => lower.includes(kw))) continue;
+        // Must be GPU-only — reject laptops, CPUs, etc.
+        if (!isGpuOnly(title)) continue;
 
         // Must be selling
+        const lower = title.toLowerCase();
         if (!['sell', 'wts', 'fs', 'lot', 'bulk'].some(kw => lower.includes(kw))) continue;
 
         const company = extractCompanyName(title, '') || `u/${author}`;
