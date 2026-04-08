@@ -55,9 +55,8 @@ export async function GET(request: Request) {
       discordStatus = await discord.sendIntelDrop({
         listings,
         leads,
-        intel,
-        actionItem,
         totalScanned,
+        sources,
       });
     } else {
       discordStatus = await discord.sendHeartbeat();
