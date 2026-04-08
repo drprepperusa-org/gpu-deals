@@ -1,16 +1,40 @@
 /**
- * Monitors companies selling GPUs worldwide.
- * Uses Google News RSS, Reddit, and Craigslist to find
- * businesses actively selling or liquidating GPU inventory.
- * All RSS-based — works on Vercel.
+ * Detects and monitors companies selling GPUs in the USA.
+ * Extracts real company names from news, Reddit, and Craigslist.
+ * All RSS-based — works on both local and Vercel.
  */
 
 import type { CompanyLead } from './types';
 
-// ─── GPU keywords for matching ───────────────────────────
+// ─── Known GPU companies to watch ────────────────────────
 
-const GPU_KEYWORDS = ['gpu', 'nvidia', 'rtx 4090', 'rtx 5090', 'rtx 3090', 'a100', 'h100', 'a6000', 'graphics card', 'geforce'];
-const GPU_MODELS_LIST = ['H100', 'A100', 'RTX 4090', 'RTX 5090', 'RTX 3090', 'A6000', 'V100', 'L40', 'H200', 'B200'];
+const KNOWN_COMPANIES = [
+  'Iron Mountain', 'TES', 'Sims Lifecycle', 'ITRenew', 'Apto Solutions',
+  'ER2', 'CentricsIT', 'Curvature', 'Park Place Technologies', 'Evernex',
+  'ServerMonkey', 'Maxxum', 'EPC Group', 'Wisetek', 'Cascade Asset Management',
+  'DataServ', 'NCS Global', 'Procurri', 'Dynamic Lifecycle', 'Arrow Electronics',
+  'Ingram Micro', 'TD Synnex', 'SHI International', 'CDW', 'Newegg Business',
+  'Dell Refurbished', 'HP Renew', 'Lenovo Outlet', 'SuperMicro',
+  'Lambda Labs', 'CoreWeave', 'Voltage Park', 'FluidStack',
+  'BidFTA', 'GovDeals', 'GovPlanet', 'Ritchie Bros', 'Heritage Global',
+];
+
+// News outlets to exclude (they report, not sell)
+const NEWS_OUTLETS = [
+  'reuters', 'bloomberg', 'cnbc', 'techcrunch', 'the verge', 'ars technica',
+  'tom\'s hardware', 'anandtech', 'wccftech', 'videocardz', 'pc gamer',
+  'pcworld', 'engadget', 'cnet', 'zdnet', 'techradar', 'digital trends',
+  'notebookcheck', 'kitguru', 'overclock3d', 'guru3d', 'hot hardware',
+  'neowin', 'xda', 'android authority', 'ign', 'gamespot', 'kotaku',
+  'bbc', 'cnn', 'nytimes', 'washington post', 'forbes', 'business insider',
+];
+
+// ─── Helpers ─────────────────────────────────────────────
+
+const GPU_KEYWORDS = ['gpu', 'nvidia', 'rtx', 'gtx', 'a100', 'h100', 'a6000', 'graphics card', 'geforce', 'quadro', 'tesla v100'];
+const GPU_MODELS_LIST = ['H200', 'H100', 'B200', 'L40S', 'L40', 'A100', 'A6000', 'V100', 'RTX 5090', 'RTX 4090', 'RTX 3090', 'RTX 5080', 'RTX 4080'];
+const SELL_KEYWORDS = ['sell', 'selling', 'sale', 'liquidat', 'auction', 'wholesale', 'bulk', 'lot', 'surplus', 'decommission', 'clearance', 'inventory', 'overstock', 'refurbish', 'buyback', 'dispose', 'offload'];
+const COMPANY_SUFFIXES = ['inc', 'llc', 'corp', 'ltd', 'co.', 'company', 'technologies', 'solutions', 'services', 'group', 'systems', 'partners', 'global', 'international', 'enterprises'];
 
 function detectGpuModels(text: string): string {
   const upper = text.toUpperCase();
@@ -21,6 +45,64 @@ function detectGpuModels(text: string): string {
 function isGpuRelated(text: string): boolean {
   const lower = text.toLowerCase();
   return GPU_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+function isSellingGpus(text: string): boolean {
+  const lower = text.toLowerCase();
+  return SELL_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+function isNewsOutlet(name: string): boolean {
+  const lower = name.toLowerCase();
+  return NEWS_OUTLETS.some(outlet => lower.includes(outlet));
+}
+
+/**
+ * Extract company name from text.
+ * Looks for known patterns: "Company Inc", "Company LLC", proper nouns, etc.
+ */
+function extractCompanyName(title: string, source: string): string | null {
+  // Check if source itself is a company (not a news outlet)
+  if (source && !isNewsOutlet(source) && source.length > 2) {
+    // Check for company suffixes in source
+    const sourceLower = source.toLowerCase();
+    if (COMPANY_SUFFIXES.some(s => sourceLower.includes(s))) {
+      return source.trim();
+    }
+  }
+
+  // Check for known companies in the title
+  for (const company of KNOWN_COMPANIES) {
+    if (title.toLowerCase().includes(company.toLowerCase())) {
+      return company;
+    }
+  }
+
+  // Extract "Company Name Inc/LLC/Corp" patterns from title
+  const companyPattern = /([A-Z][\w&\s'-]{2,30})\s+(Inc\.?|LLC|Corp\.?|Ltd\.?|Company|Technologies|Solutions|Services|Group|Systems|Partners|Global|International|Enterprises)/gi;
+  const match = title.match(companyPattern);
+  if (match) {
+    return match[0].trim();
+  }
+
+  // Extract quoted company names: "Company Name" announces...
+  const quotedMatch = title.match(/"([^"]{3,40})"/);
+  if (quotedMatch && !isNewsOutlet(quotedMatch[1])) {
+    return quotedMatch[1];
+  }
+
+  // Look for "CompanyName, a GPU/ITAD/tech company"
+  const descriptiveMatch = title.match(/^([A-Z][\w\s&'-]{2,30}),?\s+(?:a |the |an )/);
+  if (descriptiveMatch && !isNewsOutlet(descriptiveMatch[1])) {
+    return descriptiveMatch[1].trim();
+  }
+
+  // If source is not a known news outlet, use it as company name
+  if (source && !isNewsOutlet(source) && source.length > 2 && source.length < 40) {
+    return source;
+  }
+
+  return null;
 }
 
 function extractTag(xml: string, tag: string): string {
@@ -36,22 +118,33 @@ function decodeEntities(str: string): string {
   return str.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
 
-// ─── Google News: Companies selling/liquidating GPUs ─────
+function classifyCompany(text: string): { type: string; priority: 'High' | 'Medium' | 'Low' } {
+  const lower = text.toLowerCase();
+  if (lower.includes('itad') || lower.includes('asset disposition') || lower.includes('decommission')) return { type: 'ITAD', priority: 'High' };
+  if (lower.includes('liquidat') || lower.includes('surplus') || lower.includes('clearance')) return { type: 'Liquidator', priority: 'High' };
+  if (lower.includes('auction') || lower.includes('bid')) return { type: 'Auction', priority: 'High' };
+  if (lower.includes('wholesale') || lower.includes('bulk') || lower.includes('lot')) return { type: 'Wholesale', priority: 'High' };
+  if (lower.includes('refurbish') || lower.includes('renew') || lower.includes('certified')) return { type: 'Refurbisher', priority: 'Medium' };
+  if (lower.includes('resell') || lower.includes('distributor') || lower.includes('supplier')) return { type: 'Reseller', priority: 'Medium' };
+  return { type: 'Seller', priority: 'Medium' };
+}
+
+// ─── Google News: Companies selling GPUs ─────────────────
 
 async function findFromGoogleNews(): Promise<CompanyLead[]> {
   const leads: CompanyLead[] = [];
 
   const queries = [
-    'company selling bulk GPU',
-    'GPU liquidation company USA',
-    'datacenter GPU decommission sale',
-    'ITAD company GPU inventory',
-    'enterprise GPU reseller wholesale',
-    'GPU auction company bulk lot',
-    'company selling NVIDIA RTX 4090 bulk',
-    'GPU wholesaler USA',
-    'datacenter equipment liquidation GPU',
-    'bulk GPU supplier company',
+    'company selling GPU bulk USA',
+    'GPU liquidation company',
+    'datacenter GPU decommission company',
+    'ITAD GPU inventory sale',
+    'enterprise GPU wholesale company',
+    'GPU auction company bulk',
+    'company selling NVIDIA RTX 4090 wholesale',
+    'GPU supplier USA bulk wholesale',
+    'datacenter equipment liquidation GPU company',
+    'refurbished GPU wholesale company',
   ];
 
   const now = Date.now();
@@ -59,11 +152,11 @@ async function findFromGoogleNews(): Promise<CompanyLead[]> {
     .map((q, i) => ({ q, sort: Math.sin(now / 1000 + i * 47.3) }))
     .sort((a, b) => a.sort - b.sort)
     .map(x => x.q)
-    .slice(0, 4);
+    .slice(0, 5);
 
   for (const query of picked) {
     try {
-      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query + ' when:7d')}&hl=en-US&gl=US&ceid=US:en`;
+      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query + ' when:30d')}&hl=en-US&gl=US&ceid=US:en`;
       const res = await fetch(rssUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
       });
@@ -72,27 +165,23 @@ async function findFromGoogleNews(): Promise<CompanyLead[]> {
 
       const itemRegex = /<item>([\s\S]*?)<\/item>/g;
       let match;
-      while ((match = itemRegex.exec(xml)) !== null && leads.length < 20) {
+      while ((match = itemRegex.exec(xml)) !== null) {
         const block = match[1];
         const title = decodeEntities(extractTag(block, 'title'));
         const link = extractTag(block, 'link');
         const source = decodeEntities(extractTag(block, 'source'));
 
         if (!title || title.length < 15) continue;
-        if (!isGpuRelated(title)) continue;
 
-        // Extract company name from the source or title
-        const company = source || title.split(' - ')[0].split(' | ')[0].trim().slice(0, 60);
+        // Must be GPU-related AND about selling
+        if (!isGpuRelated(title) && !isGpuRelated(source)) continue;
 
-        let type = 'News';
-        const lower = title.toLowerCase();
-        if (lower.includes('liquidat')) type = 'Liquidator';
-        else if (lower.includes('auction')) type = 'Auction';
-        else if (lower.includes('itad') || lower.includes('decommission')) type = 'ITAD';
-        else if (lower.includes('wholesale') || lower.includes('bulk') || lower.includes('sell')) type = 'Reseller';
+        // Try to extract a real company name
+        const company = extractCompanyName(title, source);
+        if (!company) continue;
+        if (isNewsOutlet(company)) continue;
 
-        let priority: 'High' | 'Medium' | 'Low' = 'Medium';
-        if (lower.includes('bulk') || lower.includes('lot') || lower.includes('liquidat')) priority = 'High';
+        const { type, priority } = classifyCompany(title + ' ' + source);
 
         leads.push({
           company,
@@ -115,84 +204,16 @@ async function findFromGoogleNews(): Promise<CompanyLead[]> {
   return leads;
 }
 
-// ─── Google Alerts style: ITAD & Liquidation companies ───
-
-async function findFromGoogleAlerts(): Promise<CompanyLead[]> {
-  const leads: CompanyLead[] = [];
-
-  const queries = [
-    'ITAD GPU services USA',
-    'IT asset disposition NVIDIA',
-    'datacenter hardware liquidator',
-    'GPU buyback program company',
-    'refurbished enterprise GPU supplier',
-    'server decommission GPU wholesale',
-  ];
-
-  const now = Date.now();
-  const picked = queries
-    .map((q, i) => ({ q, sort: Math.sin(now / 1000 + i * 31.7) }))
-    .sort((a, b) => a.sort - b.sort)
-    .map(x => x.q)
-    .slice(0, 3);
-
-  for (const query of picked) {
-    try {
-      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query + ' when:30d')}&hl=en-US&gl=US&ceid=US:en`;
-      const res = await fetch(rssUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
-      });
-      if (!res.ok) continue;
-      const xml = await res.text();
-
-      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-      let match;
-      while ((match = itemRegex.exec(xml)) !== null && leads.length < 15) {
-        const block = match[1];
-        const title = decodeEntities(extractTag(block, 'title'));
-        const link = extractTag(block, 'link');
-        const source = decodeEntities(extractTag(block, 'source'));
-
-        if (!title || title.length < 15) continue;
-
-        const company = source || title.split(' - ')[0].trim().slice(0, 60);
-        const lower = title.toLowerCase();
-
-        let type = 'Reseller';
-        if (lower.includes('itad') || lower.includes('asset disposition') || lower.includes('decommission')) type = 'ITAD';
-        else if (lower.includes('liquidat')) type = 'Liquidator';
-        else if (lower.includes('auction')) type = 'Auction';
-
-        leads.push({
-          company,
-          website: link,
-          type,
-          description: title,
-          location: 'USA',
-          gpuModels: detectGpuModels(title),
-          priority: type === 'ITAD' || type === 'Liquidator' ? 'High' : 'Medium',
-          notes: `Google Alerts: "${query}"`,
-          foundAt: new Date().toISOString(),
-        });
-      }
-    } catch (err) {
-      console.error(`[Alerts Leads] Error:`, (err as Error).message);
-    }
-  }
-
-  console.log(`[Alerts Leads] Found ${leads.length} companies`);
-  return leads;
-}
-
-// ─── Reddit: Companies posting GPU sales ─────────────────
+// ─── Reddit: Companies & sellers posting GPU sales ───────
 
 async function findFromReddit(): Promise<CompanyLead[]> {
   const leads: CompanyLead[] = [];
 
   const feeds = [
-    'https://www.reddit.com/r/hardwareswap/search.rss?q=selling+GPU+bulk+OR+lot+OR+wholesale&sort=new&t=week',
-    'https://www.reddit.com/r/homelabsales/search.rss?q=selling+GPU+OR+NVIDIA&sort=new&t=week',
-    'https://www.reddit.com/r/sysadmin/search.rss?q=GPU+decommission+OR+surplus+OR+liquidation&sort=new&t=month',
+    'https://www.reddit.com/r/hardwareswap/search.rss?q=selling+GPU+bulk+OR+lot+OR+wholesale+OR+company&sort=new&t=week',
+    'https://www.reddit.com/r/homelabsales/search.rss?q=selling+GPU+OR+NVIDIA+server&sort=new&t=week',
+    'https://www.reddit.com/r/sysadmin/search.rss?q=GPU+decommission+OR+surplus+OR+liquidation+OR+selling&sort=new&t=month',
+    'https://www.reddit.com/r/NVIDIA/search.rss?q=where+to+buy+bulk+GPU+OR+wholesale+OR+company&sort=new&t=month',
   ];
 
   for (const feedUrl of feeds) {
@@ -205,27 +226,39 @@ async function findFromReddit(): Promise<CompanyLead[]> {
 
       const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
       let match;
-      while ((match = entryRegex.exec(xml)) !== null && leads.length < 10) {
+      while ((match = entryRegex.exec(xml)) !== null) {
         const block = match[1];
         const titleMatch = block.match(/<title[^>]*>([\s\S]*?)<\/title>/);
         const linkMatch = block.match(/<link[^>]*href="([^"]+)"/);
         const authorMatch = block.match(/<author>[\s\S]*?<name>([\s\S]*?)<\/name>/);
+        const contentMatch = block.match(/<content[^>]*>([\s\S]*?)<\/content>/);
 
         const title = titleMatch ? decodeEntities(titleMatch[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim()) : '';
         const link = linkMatch ? linkMatch[1] : '';
-        const author = authorMatch ? authorMatch[1].trim() : 'Reddit User';
+        const author = authorMatch ? authorMatch[1].trim() : '';
+        const content = contentMatch ? contentMatch[1].replace(/<[^>]+>/g, ' ').trim() : '';
 
-        if (!title || !isGpuRelated(title)) continue;
+        if (!title) continue;
+        if (!isGpuRelated(title) && !isGpuRelated(content)) continue;
+
+        // Try to find a company name in the post
+        const fullText = title + ' ' + content;
+        const company = extractCompanyName(fullText, '') || (author ? `u/${author}` : null);
+        if (!company) continue;
+
+        // Check if it's about selling
+        const isSelling = isSellingGpus(title) || isSellingGpus(content);
+        const { type, priority } = classifyCompany(fullText);
 
         leads.push({
-          company: `u/${author}`,
+          company,
           website: link,
-          type: 'Reseller',
+          type: isSelling ? type : 'Seller',
           description: title.slice(0, 200),
           location: 'USA',
-          gpuModels: detectGpuModels(title),
-          priority: title.toLowerCase().includes('bulk') || title.toLowerCase().includes('lot') ? 'High' : 'Medium',
-          notes: 'Reddit seller',
+          gpuModels: detectGpuModels(fullText),
+          priority: isSelling ? priority : 'Medium',
+          notes: 'Reddit',
           foundAt: new Date().toISOString(),
         });
       }
@@ -253,9 +286,10 @@ async function findFromCraigslist(): Promise<CompanyLead[]> {
     { id: 'miami', name: 'Miami, FL' },
     { id: 'denver', name: 'Denver, CO' },
     { id: 'phoenix', name: 'Phoenix, AZ' },
+    { id: 'austin', name: 'Austin, TX' },
+    { id: 'portland', name: 'Portland, OR' },
   ];
 
-  // Pick 4 cities per run
   const now = Date.now();
   const picked = cities
     .map((c, i) => ({ ...c, sort: Math.sin(now / 1000 + i * 23.7) }))
@@ -264,7 +298,7 @@ async function findFromCraigslist(): Promise<CompanyLead[]> {
 
   for (const city of picked) {
     try {
-      const url = `https://${city.id}.craigslist.org/search/sss?query=GPU+NVIDIA+bulk&format=rss`;
+      const url = `https://${city.id}.craigslist.org/search/sss?query=GPU+NVIDIA+selling&format=rss`;
       const res = await fetch(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
       });
@@ -273,21 +307,25 @@ async function findFromCraigslist(): Promise<CompanyLead[]> {
 
       const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/g;
       let match;
-      while ((match = itemRegex.exec(xml)) !== null && leads.length < 15) {
+      while ((match = itemRegex.exec(xml)) !== null) {
         const block = match[1];
         const title = decodeEntities(extractTag(block, 'title'));
         const link = extractTag(block, 'link');
 
         if (!title || !isGpuRelated(title)) continue;
 
+        // Try to detect if it's a business (not individual)
+        const company = extractCompanyName(title, '') || `GPU Seller — ${city.name}`;
+        const { type, priority } = classifyCompany(title);
+
         leads.push({
-          company: `Craigslist Seller — ${city.name}`,
+          company,
           website: link,
-          type: 'Reseller',
+          type,
           description: title,
           location: city.name,
           gpuModels: detectGpuModels(title),
-          priority: title.toLowerCase().includes('bulk') || title.toLowerCase().includes('lot') ? 'High' : 'Medium',
+          priority,
           notes: `Craigslist ${city.id}`,
           foundAt: new Date().toISOString(),
         });
@@ -304,27 +342,26 @@ async function findFromCraigslist(): Promise<CompanyLead[]> {
 // ─── Main: Find all GPU companies ────────────────────────
 
 export async function findGpuCompanies(): Promise<CompanyLead[]> {
-  const [newsLeads, alertsLeads, redditLeads, clLeads] = await Promise.all([
+  const [newsLeads, redditLeads, clLeads] = await Promise.all([
     findFromGoogleNews(),
-    findFromGoogleAlerts(),
     findFromReddit(),
     findFromCraigslist(),
   ]);
 
-  const allLeads = [...newsLeads, ...alertsLeads, ...redditLeads, ...clLeads];
+  const allLeads = [...newsLeads, ...redditLeads, ...clLeads];
 
-  console.log(`[Leads] Total: ${allLeads.length} | News=${newsLeads.length}, Alerts=${alertsLeads.length}, Reddit=${redditLeads.length}, Craigslist=${clLeads.length}`);
+  console.log(`[Leads] Total: ${allLeads.length} | News=${newsLeads.length}, Reddit=${redditLeads.length}, Craigslist=${clLeads.length}`);
 
-  // Dedup by website/link
+  // Dedup by company name (case-insensitive)
   const seen = new Set<string>();
   const deduped = allLeads.filter(l => {
-    const key = l.website.toLowerCase();
+    const key = l.company.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 
-  // Sort: High priority first
+  // Sort: High priority first, then by type
   deduped.sort((a, b) => {
     const p = { High: 3, Medium: 2, Low: 1 };
     return (p[b.priority] || 0) - (p[a.priority] || 0);
