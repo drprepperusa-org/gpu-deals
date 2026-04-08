@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { scanForGpuDeals } from '@/lib/gpu-scraper';
 import { findGpuCompanies } from '@/lib/lead-finder';
 import { generateIntel, getActionItem } from '@/lib/intel';
-import { syncMarketIntel, syncLeads } from '@/lib/sheets';
+import { syncMarketIntel, syncLeads, syncReviewQueue, syncAlerts } from '@/lib/sheets';
 import { saveListings, saveLeads } from '@/lib/store';
 import { evaluateAlerts, saveAlerts, sendAlertToDiscord } from '@/lib/alerts';
 
@@ -46,9 +46,11 @@ export async function GET(request: Request) {
       await sendAlertToDiscord(alerts);
     }
 
-    // Sync to Google Sheet
+    // Sync to Google Sheets (all tabs)
     try {
       await Promise.all([
+        syncReviewQueue(listings),
+        syncAlerts(alerts),
         syncMarketIntel(intel, listings),
         syncLeads(leads),
       ]);
