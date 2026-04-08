@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { scrapeNews } from '@/lib/news-scraper';
 import { scanForGpuDeals } from '@/lib/gpu-scraper';
 import { findGpuCompanies } from '@/lib/lead-finder';
 import { DiscordWebhook } from '@/lib/discord';
@@ -36,27 +35,25 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Run all scrapers in parallel
-    const [dealResults, leads, newsItems] = await Promise.all([
+    // Run scrapers in parallel
+    const [dealResults, leads] = await Promise.all([
       scanForGpuDeals(),
       findGpuCompanies(),
-      scrapeNews(),
     ]);
 
     const { listings, totalScanned, sources } = dealResults;
 
     // Generate intelligence analysis
-    const intel = generateIntel({ listings, leads, news: newsItems });
+    const intel = generateIntel({ listings, leads, news: [] });
     const actionItem = getActionItem(listings, leads);
 
     // Post to Discord
     let discordStatus: string;
-    if (listings.length > 0 || newsItems.length > 0 || leads.length > 0) {
+    if (listings.length > 0 || leads.length > 0) {
       discordStatus = await discord.sendIntelDrop({
         listings,
         leads,
         intel,
-        news: newsItems,
         actionItem,
         totalScanned,
       });
@@ -64,7 +61,7 @@ export async function GET(request: Request) {
       discordStatus = await discord.sendHeartbeat();
     }
 
-    // Sync to Google Sheet (non-blocking)
+    // Sync to Google Sheet
     try {
       await Promise.all([
         syncMarketIntel(intel, listings),
@@ -80,7 +77,6 @@ export async function GET(request: Request) {
       success: true,
       listings: listings.length,
       leads: leads.length,
-      newsCount: newsItems.length,
       intelItems: intel.length,
       scanned: totalScanned,
       sources,

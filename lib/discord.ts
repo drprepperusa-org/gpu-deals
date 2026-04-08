@@ -1,5 +1,4 @@
 import axios from 'axios';
-import type { NewsItem } from './news-scraper';
 import type { GpuListing, CompanyLead, MarketIntel } from './types';
 
 export class DiscordWebhook {
@@ -20,7 +19,6 @@ export class DiscordWebhook {
     listings: GpuListing[];
     leads: CompanyLead[];
     intel: MarketIntel[];
-    news: NewsItem[];
     actionItem: string;
     totalScanned: number;
   }) {
@@ -94,20 +92,6 @@ export class DiscordWebhook {
 
         await this.postSafe(msg2);
         await this.wait();
-      }
-
-      // ── MESSAGE 3: GPU NEWS ───────────────────────────
-      if (opts.news.length > 0) {
-        let msg3 = `**📰 Top GPU News Today**\n\n`;
-        for (const n of opts.news.slice(0, 6)) {
-          const time = n.time ? ` · _${n.time}_` : '';
-          msg3 += `▸ [**${n.headline}**](${n.link})\n`;
-          msg3 += `  ${n.source}${time}\n\n`;
-        }
-        msg3 += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-        msg3 += `_${opts.news.length} headlines · Synced to Google Sheet_`;
-
-        await this.postSafe(msg3);
       }
 
       return 'sent';
