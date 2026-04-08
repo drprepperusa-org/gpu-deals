@@ -245,85 +245,6 @@ async function searchGovernmentContracts(): Promise<CompanyLead[]> {
 }
 
 
-// ─── Google News RSS — Company announcements ─────────────
-
-async function searchGoogleNews(): Promise<CompanyLead[]> {
-  const leads: CompanyLead[] = [];
-
-  const queries = [
-    'company selling bulk GPU USA',
-    'GPU liquidation company announcement',
-    'datacenter GPU decommission company',
-    'ITAD GPU inventory wholesale',
-    'enterprise GPU wholesale supplier',
-    'bulk GPU supplier company USA',
-    'GPU wholesale distributor',
-    'NVIDIA RTX bulk sale company',
-    'server GPU decommission sale company',
-    'GPU reseller wholesale bulk',
-    'datacenter hardware liquidation GPU',
-    'IT asset recovery GPU company',
-  ];
-
-  const now = Date.now();
-  const picked = queries
-    .map((q, i) => ({ q, sort: Math.sin(now / 1000 + i * 37.1) }))
-    .sort((a, b) => a.sort - b.sort)
-    .map(x => x.q)
-    .slice(0, 6);
-
-  for (const query of picked) {
-    try {
-      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query + ' when:30d')}&hl=en-US&gl=US&ceid=US:en`;
-      const res = await fetch(rssUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
-      });
-      if (!res.ok) continue;
-      const xml = await res.text();
-
-      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-      let match;
-      while ((match = itemRegex.exec(xml)) !== null) {
-        const block = match[1];
-        const titleCdata = block.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/);
-        const linkMatch = block.match(/<link[^>]*>([\s\S]*?)<\/link>/);
-        const sourceCdata = block.match(/<source[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/source>/);
-
-        const title = titleCdata ? titleCdata[1].replace(/&amp;/g, '&').trim() : '';
-        const link = linkMatch ? linkMatch[1].trim() : '';
-        const source = sourceCdata ? sourceCdata[1].replace(/&amp;/g, '&').trim() : '';
-
-        if (!title || title.length < 15) continue;
-
-        const lower = title.toLowerCase();
-        if (!['gpu', 'nvidia', 'rtx', 'graphics card', 'a100', 'h100'].some(kw => lower.includes(kw))) continue;
-
-        const company = extractCompanyName(title, source);
-        if (!company || isNewsOutlet(company)) continue;
-
-        const { type, priority } = classifyCompany(title);
-
-        leads.push({
-          company,
-          website: link,
-          type,
-          description: title,
-          location: 'USA',
-          gpuModels: detectGpuModels(title),
-          priority,
-          notes: `Google News: "${query}"`,
-          foundAt: new Date().toISOString(),
-        });
-      }
-    } catch (err) {
-      console.error(`[News] Error:`, (err as Error).message);
-    }
-  }
-
-  console.log(`[Google News] Found ${leads.length} company leads`);
-  return leads;
-}
-
 // ─── Reddit — B2B GPU sellers ────────────────────────────
 
 async function searchRedditSellers(): Promise<CompanyLead[]> {
@@ -389,16 +310,15 @@ async function searchRedditSellers(): Promise<CompanyLead[]> {
 // ─── Main: Find all GPU companies ────────────────────────
 
 export async function findGpuCompanies(): Promise<CompanyLead[]> {
-  const [cse, govContracts, news, reddit] = await Promise.all([
+  const [cse, govContracts, reddit] = await Promise.all([
     searchGoogleCSE(),
     searchGovernmentContracts(),
-    searchGoogleNews(),
     searchRedditSellers(),
   ]);
 
-  const allLeads = [...cse, ...govContracts, ...news, ...reddit];
+  const allLeads = [...cse, ...govContracts, ...reddit];
 
-  console.log(`[Companies] Total: ${allLeads.length} | CSE=${cse.length}, Gov=${govContracts.length}, News=${news.length}, Reddit=${reddit.length}`);
+  console.log(`[Companies] Total: ${allLeads.length} | CSE=${cse.length}, Gov=${govContracts.length}, Reddit=${reddit.length}`);
 
   // Dedup by company name
   const seen = new Set<string>();
