@@ -707,36 +707,20 @@ export async function scanForGpuDeals(range: string = 'today'): Promise<{
   const redditTime = range === 'week' ? 'week' : range === '3d' ? 'week' : 'day';
   const newsDays = range === 'week' ? '7d' : range === '3d' ? '3d' : '1d';
 
-  // Run ALL sources in parallel
-  const [reddit, bestbuy, newegg, pcpartpicker, slickdeals, google, swappa, bidspotter, hibid, govdeals, craigslist] = await Promise.all([
+  // Run top sources in parallel (trimmed for speed + credit efficiency)
+  const [reddit, craigslist, google] = await Promise.all([
     scrapeReddit(redditTime),
-    scrapeBestBuy(),
-    scrapeNewegg(),
-    scrapePCPartPicker(),
-    scrapeSlickdeals(),
-    scrapeGoogleGpuDeals(newsDays),
-    scrapeSwappa(),
-    scrapeBidSpotter(),
-    scrapeHiBid(),
-    scrapeGovDeals(),
     scrapeCraigslist(),
+    scrapeGoogleGpuDeals(newsDays),
   ]);
 
   const sources: Record<string, number> = {
     reddit: reddit.length,
-    bestbuy: bestbuy.length,
-    newegg: newegg.length,
-    pcpartpicker: pcpartpicker.length,
-    slickdeals: slickdeals.length,
-    google: google.length,
-    swappa: swappa.length,
-    bidspotter: bidspotter.length,
-    hibid: hibid.length,
-    govdeals: govdeals.length,
     craigslist: craigslist.length,
+    google: google.length,
   };
 
-  const allListings = [...reddit, ...bestbuy, ...newegg, ...pcpartpicker, ...slickdeals, ...google, ...swappa, ...bidspotter, ...hibid, ...govdeals, ...craigslist];
+  const allListings = [...reddit, ...craigslist, ...google];
   const totalScanned = allListings.length;
 
   console.log(`[GPU] Total: ${totalScanned} | Sources: ${Object.entries(sources).map(([k, v]) => `${k}=${v}`).join(', ')}`);
