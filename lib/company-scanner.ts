@@ -6,6 +6,19 @@
 
 import type { CompanyLead } from './types';
 
+// ─── Proxy Fetch (ScraperAPI) ─────────────────────────────
+
+async function proxyFetch(url: string): Promise<Response> {
+  const apiKey = process.env.SCRAPER_API_KEY;
+  if (apiKey) {
+    const proxyUrl = `https://api.scraperapi.com/?api_key=${apiKey}&url=${encodeURIComponent(url)}`;
+    return fetch(proxyUrl);
+  }
+  return fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+  });
+}
+
 // ─── Hard Filter — GPU only, reject everything else ──────
 
 const REJECT_TERMS = [
@@ -309,9 +322,7 @@ async function searchRedditSellers(): Promise<CompanyLead[]> {
 
   for (const feedUrl of feeds) {
     try {
-      const res = await fetch(feedUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
-      });
+      const res = await proxyFetch(feedUrl);
       if (!res.ok) continue;
       const xml = await res.text();
 

@@ -101,6 +101,20 @@ function hardFilter(title: string): boolean {
   return true;
 }
 
+// ─── Proxy Fetch (ScraperAPI) ─────────────────────────────
+
+async function proxyFetch(url: string): Promise<Response> {
+  const apiKey = process.env.SCRAPER_API_KEY;
+  if (apiKey) {
+    const proxyUrl = `https://api.scraperapi.com/?api_key=${apiKey}&url=${encodeURIComponent(url)}`;
+    return fetch(proxyUrl);
+  }
+  // Fallback: direct fetch
+  return fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+  });
+}
+
 function detectGPUModel(title: string): string {
   const upper = title.toUpperCase();
   return GPU_MODELS.find(m => upper.includes(m)) || '';
@@ -185,9 +199,7 @@ async function scrapeReddit(timeParam: string): Promise<GpuListing[]> {
 
   for (const feedUrl of feeds) {
     try {
-      const res = await fetch(feedUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
-      });
+      const res = await proxyFetch(feedUrl);
       if (!res.ok) continue;
       const xml = await res.text();
 
@@ -265,9 +277,7 @@ async function scrapeBestBuy(): Promise<GpuListing[]> {
     // Fallback: Best Buy deals RSS
     try {
       const url = 'https://www.bestbuy.com/rss/deals/category/abcat0507002';
-      const res = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
-      });
+      const res = await proxyFetch(url);
       if (!res.ok) return [];
       const xml = await res.text();
 
@@ -311,9 +321,7 @@ async function scrapeNewegg(): Promise<GpuListing[]> {
 
   for (const feedUrl of feeds) {
     try {
-      const res = await fetch(feedUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
-      });
+      const res = await proxyFetch(feedUrl);
       if (!res.ok) continue;
       const xml = await res.text();
 
@@ -548,9 +556,7 @@ async function scrapeBidSpotter(): Promise<GpuListing[]> {
   const listings: GpuListing[] = [];
   try {
     const url = 'https://www.bidspotter.com/en-us/search?query=NVIDIA+GPU';
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-    });
+    const res = await proxyFetch(url);
     if (!res.ok) return [];
     const html = await res.text();
 
@@ -583,9 +589,7 @@ async function scrapeHiBid(): Promise<GpuListing[]> {
   const listings: GpuListing[] = [];
   try {
     const url = 'https://www.hibid.com/search?q=NVIDIA+GPU+lot';
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-    });
+    const res = await proxyFetch(url);
     if (!res.ok) return [];
     const html = await res.text();
 
@@ -617,9 +621,7 @@ async function scrapeGovDeals(): Promise<GpuListing[]> {
   const listings: GpuListing[] = [];
   try {
     const url = 'https://www.govdeals.com/index.cfm?fa=Main.AdvSearchResultsNew&searchPg=Category&additession=&category=00&description=GPU+NVIDIA&min_price=0&max_price=0';
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-    });
+    const res = await proxyFetch(url);
     if (!res.ok) return [];
     const html = await res.text();
 
@@ -657,9 +659,7 @@ async function scrapeCraigslist(): Promise<GpuListing[]> {
   for (const city of picked) {
     try {
       const url = `https://${city}.craigslist.org/search/sss?query=GPU+NVIDIA+lot&format=rss`;
-      const res = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; GPUDeals/1.0)' },
-      });
+      const res = await proxyFetch(url);
       if (!res.ok) continue;
       const xml = await res.text();
 
